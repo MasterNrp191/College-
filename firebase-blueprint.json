@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student Profile",
+      "description": "Stores student profile information and role.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "name": { "type": "string", "description": "Full name of the student" },
+        "email": { "type": "string", "description": "Email address" },
+        "program": { "type": "string", "enum": ["Clinical Medicine", "Clinical Radiology"], "description": "Academic program" },
+        "registrationNumber": { "type": "string", "description": "College registration number" },
+        "role": { "type": "string", "enum": ["student", "admin"], "description": "User role" },
+        "createdAt": { "type": "number", "description": "Timestamp of creation" }
+      },
+      "required": ["uid", "name", "email", "program", "role"]
+    },
+    "Result": {
+      "title": "Academic Result",
+      "description": "Stores academic performance for a student.",
+      "type": "object",
+      "properties": {
+        "studentUid": { "type": "string", "description": "UID of the student" },
+        "courseName": { "type": "string", "description": "Name of the course" },
+        "courseCode": { "type": "string", "description": "Course code" },
+        "grade": { "type": "string", "description": "Grade earned" },
+        "semester": { "type": "string", "description": "Semester" },
+        "year": { "type": "string", "description": "Academic year" },
+        "createdAt": { "type": "number", "description": "Timestamp of creation" }
+      },
+      "required": ["studentUid", "courseName", "grade", "semester", "year"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "Student",
+      "description": "User profiles and roles"
+    },
+    "/results/{resultId}": {
+      "schema": "Result",
+      "description": "Academic results for students"
+    }
+  }
+}

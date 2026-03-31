@@ -1,0 +1,126 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId} (Firebase Auth UID)
+    // Fields:
+    //   - uid: string (required, immutable)
+    //   - name: string (required, min 2, max 100)
+    //   - email: string (required, valid email)
+    //   - program: string (required, enum: ["Clinical Medicine", "Clinical Radiology"])
+    //   - registrationNumber: string (required)
+    //   - role: string (required, enum: ["student", "admin"])
+    //   - createdAt: number (required)
+    //
+    // Collection: results
+    // Document ID: {resultId} (Auto-generated)
+    // Fields:
+    //   - studentUid: string (required)
+    //   - courseName: string (required, max 100)
+    //   - courseCode: string (required, max 20)
+    //   - grade: string (required, max 5)
+    //   - semester: string (required)
+    //   - year: string (required)
+    //   - createdAt: number (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "charlesmkonyi87@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isEditor() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'editor';
+    }
+
+    function isApproved() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approved == true;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasOnly(['uid', 'name', 'email', 'program', 'registrationNumber', 'role', 'approved', 'createdAt']) &&
+             data.uid is string && data.uid == request.auth.uid &&
+             data.name is string && data.name.size() >= 2 && data.name.size() <= 100 &&
+             isValidEmail(data.email) &&
+             data.program in ["Clinical Medicine", "Clinical Radiology"] &&
+             data.registrationNumber is string &&
+             data.role in ["student", "admin", "editor"] &&
+             data.approved is bool &&
+             data.createdAt is number;
+    }
+
+    function isValidResult(data) {
+      return data.keys().hasOnly(['studentUid', 'courseName', 'courseCode', 'grade', 'semester', 'year', 'createdAt']) &&
+             data.studentUid is string &&
+             data.courseName is string && data.courseName.size() <= 100 &&
+             data.courseCode is string && data.courseCode.size() <= 20 &&
+             data.grade is string && data.grade.size() <= 5 &&
+             data.semester is string &&
+             data.year is string &&
+             data.createdAt is number;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin() || isEditor();
+      
+      // Only allow users to create their own profile with 'student' role and approved=false
+      // Admin can create any profile
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
+                      ((isOwner(userId) && request.resource.data.role == 'student' && request.resource.data.approved == false) || isAdmin());
+      
+      // Users can update their own profile but NOT their role or approval status
+      // Admin can update anything
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) &&
+                      ((isOwner(userId) && 
+                        request.resource.data.role == resource.data.role && 
+                        request.resource.data.approved == resource.data.approved) || isAdmin());
+      
+      allow delete: if isAdmin();
+    }
+
+    match /results/{resultId} {
+      allow read: if isAuthenticated() && (isApproved() && request.auth.uid == resource.data.studentUid || isAdmin() || isEditor());
+      allow create: if isAdmin() && isValidResult(request.resource.data);
+      allow update: if isAdmin() && isValidResult(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /announcements/{announcementId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Connection test path
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}

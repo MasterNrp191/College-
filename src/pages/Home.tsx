@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, BookOpen, Users, Award, HeartPulse, Microscope, Activity } from 'lucide-react';
+import { ArrowRight, BookOpen, Users, Award, HeartPulse, Microscope, Activity, Heart } from 'lucide-react';
 import { motion } from 'motion/react';
 import QuoteSection from '@/components/QuoteSection';
 
@@ -28,7 +28,7 @@ export default function Home() {
       <section className="relative h-[85vh] flex items-center overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img
-            src="https://picsum.photos/seed/medical-college/1920/1080"
+            src="https://picsum.photos/seed/clinical-students-uniform/1920/1080"
             alt="Medical College Campus"
             className="w-full h-full object-cover brightness-[0.4]"
             referrerPolicy="no-referrer"
@@ -169,6 +169,45 @@ export default function Home() {
 
       {/* Quote Section */}
       <QuoteSection />
+
+      {/* Donation Section */}
+      <section className="py-24 bg-slate-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="bg-white rounded-[3rem] p-12 md:p-20 shadow-xl border border-blue-50 flex flex-col md:flex-row items-center gap-12 overflow-hidden relative">
+            <div className="absolute top-0 right-0 p-12 opacity-5">
+              <Heart className="h-64 w-64 text-red-600" />
+            </div>
+            <div className="flex-1 space-y-8 relative z-10">
+              <div className="inline-flex items-center space-x-2 bg-red-50 px-4 py-2 rounded-full">
+                <Heart className="h-4 w-4 text-red-600" />
+                <span className="text-xs font-bold text-red-600 uppercase tracking-widest">Support Our Mission</span>
+              </div>
+              <h3 className="text-4xl md:text-5xl font-bold text-slate-900 leading-tight">
+                Invest in the Future of <span className="text-red-600">Healthcare</span>
+              </h3>
+              <p className="text-lg text-slate-600 leading-relaxed max-w-xl">
+                Your donations help us provide modern equipment, scholarships, and better facilities for our clinical students. Join us in building a healthier Tanzania.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                <button className="bg-red-600 text-white hover:bg-red-700 px-10 py-5 rounded-full text-lg font-bold transition-all shadow-xl shadow-red-200 active:scale-95">
+                  Donate Now
+                </button>
+                <button className="bg-slate-100 text-slate-700 hover:bg-slate-200 px-10 py-5 rounded-full text-lg font-bold transition-all active:scale-95">
+                  Learn More
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 relative">
+              <img
+                src="https://picsum.photos/seed/clinical-uniform-donation/800/800"
+                alt="Donation Impact"
+                className="rounded-3xl shadow-2xl border-8 border-white rotate-3 hover:rotate-0 transition-transform duration-500"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Call to Action */}
       <section className="py-24 bg-blue-900 relative overflow-hidden">

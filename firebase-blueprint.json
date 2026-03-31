@@ -8,12 +8,15 @@
         "uid": { "type": "string", "description": "Firebase Auth UID" },
         "name": { "type": "string", "description": "Full name of the student" },
         "email": { "type": "string", "description": "Email address" },
-        "program": { "type": "string", "enum": ["Clinical Medicine", "Clinical Radiology"], "description": "Academic program" },
+        "program": { "type": "string", "description": "Academic program" },
         "registrationNumber": { "type": "string", "description": "College registration number" },
-        "role": { "type": "string", "enum": ["student", "admin"], "description": "User role" },
-        "createdAt": { "type": "number", "description": "Timestamp of creation" }
+        "role": { "type": "string", "enum": ["student", "admin", "editor", "bursar"], "description": "User role" },
+        "approved": { "type": "boolean", "description": "Approval status" },
+        "feesRemaining": { "type": "number", "description": "Remaining fees to be paid" },
+        "createdAt": { "type": "number", "description": "Timestamp of creation" },
+        "lastLogin": { "type": "number", "description": "Timestamp of last login" }
       },
-      "required": ["uid", "name", "email", "program", "role"]
+      "required": ["uid", "name", "email", "role", "approved"]
     },
     "Result": {
       "title": "Academic Result",
@@ -29,6 +32,32 @@
         "createdAt": { "type": "number", "description": "Timestamp of creation" }
       },
       "required": ["studentUid", "courseName", "grade", "semester", "year"]
+    },
+    "Timetable": {
+      "title": "Timetable",
+      "description": "Stores academic timetables.",
+      "type": "object",
+      "properties": {
+        "program": { "type": "string", "description": "Academic program" },
+        "year": { "type": "string", "description": "Academic year" },
+        "semester": { "type": "string", "description": "Semester" },
+        "fileUrl": { "type": "string", "description": "URL to the timetable file" },
+        "createdAt": { "type": "number", "description": "Timestamp of creation" }
+      },
+      "required": ["program", "year", "semester", "fileUrl"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Stores college announcements.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Title of the announcement" },
+        "content": { "type": "string", "description": "Content of the announcement" },
+        "category": { "type": "string", "description": "Category (e.g., Academic, Event)" },
+        "date": { "type": "number", "description": "Timestamp of announcement" },
+        "createdAt": { "type": "number", "description": "Timestamp of creation" }
+      },
+      "required": ["title", "content", "category", "date"]
     }
   },
   "firestore": {
@@ -39,6 +68,14 @@
     "/results/{resultId}": {
       "schema": "Result",
       "description": "Academic results for students"
+    },
+    "/timetables/{timetableId}": {
+      "schema": "Timetable",
+      "description": "Academic timetables"
+    },
+    "/announcements/{announcementId}": {
+      "schema": "Announcement",
+      "description": "College announcements"
     }
   }
 }

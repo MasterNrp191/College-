@@ -6,7 +6,7 @@ import { useAuth } from '@/components/AuthContext';
 
 export default function Portal() {
   const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState('');
+  const [regNumber, setRegNumber] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [program, setProgram] = useState('Clinical Medicine');
@@ -23,13 +23,13 @@ export default function Portal() {
 
     try {
       if (isLogin) {
-        await login(email, password);
+        await login(regNumber, password);
         navigate('/dashboard');
       } else {
         if (password.length < 8) {
           throw new Error('Password must be at least 8 characters long.');
         }
-        await register(email, password, name, program);
+        await register(regNumber, password, name, program);
         setError('Registration successful! Please wait for admin approval before logging in.');
         setIsLogin(true);
       }
@@ -95,17 +95,17 @@ export default function Portal() {
 
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">
-                {isLogin ? 'Registration Number or Email' : 'Registration Number'}
+                Registration Number
               </label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
                 <input
                   type="text"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={regNumber}
+                  onChange={(e) => setRegNumber(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-12 pr-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
-                  placeholder={isLogin ? "NS0108/0021/2024 or admin@example.com" : "NS0108/0021/2024"}
+                  placeholder="e.g. KCOTC/2024/009"
                 />
               </div>
             </div>
@@ -164,15 +164,21 @@ export default function Portal() {
           </button>
         </form>
 
-        <div className="pt-6 text-center">
+        <div className="pt-6 text-center space-y-4">
           <button
             onClick={() => setIsLogin(!isLogin)}
-            className="text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors"
+            className="text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors block w-full"
           >
             {isLogin 
               ? "Don't have an account? Register here" 
               : "Already have an account? Sign in here"}
           </button>
+          <Link
+            to="/staff-portal"
+            className="text-xs font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors block w-full"
+          >
+            Are you a staff member? Go to Staff Portal
+          </Link>
         </div>
 
         <div className="pt-8 border-t border-slate-100 flex items-center justify-center space-x-2 text-slate-400 text-xs uppercase tracking-widest font-bold">

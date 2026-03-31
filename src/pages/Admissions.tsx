@@ -30,14 +30,29 @@ export default function Admissions() {
           >
             Admissions
           </motion.h1>
-          <p className="text-xl text-blue-200 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-xl text-blue-200 max-w-2xl mx-auto leading-relaxed mb-10">
             Join our community of healthcare professionals. Learn about our admission process and requirements.
           </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
+            <a 
+              href="/portal" 
+              className="bg-blue-600 text-white hover:bg-blue-700 px-10 py-4 rounded-full text-lg font-bold transition-all shadow-xl shadow-blue-900/40 flex items-center space-x-2 active:scale-95"
+            >
+              <span>Apply Now</span>
+              <FileText className="h-5 w-5" />
+            </a>
+            <a 
+              href="#requirements" 
+              className="bg-white/10 text-white hover:bg-white/20 border border-white/20 px-10 py-4 rounded-full text-lg font-bold transition-all backdrop-blur-md active:scale-95"
+            >
+              View Requirements
+            </a>
+          </div>
         </div>
       </section>
 
       {/* Admission Requirements */}
-      <section className="py-24">
+      <section id="requirements" className="py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
             <div className="space-y-8">

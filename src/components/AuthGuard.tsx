@@ -3,7 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { ReactNode } from 'react';
 
 export function AuthGuard({ children, adminOnly = false }: { children: ReactNode, adminOnly?: boolean }) {
-  const { user, loading, isAdmin, isEditor } = useAuth();
+  const { user, loading, isAdmin, isEditor, isBursar } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -15,10 +15,11 @@ export function AuthGuard({ children, adminOnly = false }: { children: ReactNode
   }
 
   if (!user) {
-    return <Navigate to="/portal" state={{ from: location }} replace />;
+    const redirectPath = adminOnly ? "/staff-portal" : "/portal";
+    return <Navigate to={redirectPath} state={{ from: location }} replace />;
   }
 
-  const isStaff = isAdmin || isEditor;
+  const isStaff = isAdmin || isEditor || isBursar;
 
   if (adminOnly && !isStaff) {
     return <Navigate to="/dashboard" replace />;

@@ -11,10 +11,13 @@ service cloud.firestore {
     //   - uid: string (required, immutable)
     //   - name: string (required, min 2, max 100)
     //   - email: string (required, valid email)
-    //   - program: string (required, enum: ["Clinical Medicine", "Clinical Radiology"])
+    //   - program: string (required)
     //   - registrationNumber: string (required)
-    //   - role: string (required, enum: ["student", "admin"])
+    //   - role: string (required, enum: ["student", "admin", "editor", "bursar"])
+    //   - approved: bool (required)
+    //   - feesRemaining: number (optional)
     //   - createdAt: number (required)
+    //   - lastLogin: number (optional)
     //
     // Collection: results
     // Document ID: {resultId} (Auto-generated)
@@ -25,6 +28,24 @@ service cloud.firestore {
     //   - grade: string (required, max 5)
     //   - semester: string (required)
     //   - year: string (required)
+    //   - createdAt: number (required)
+    //
+    // Collection: timetables
+    // Document ID: {timetableId} (Auto-generated)
+    // Fields:
+    //   - program: string (required)
+    //   - year: string (required)
+    //   - semester: string (required)
+    //   - fileUrl: string (required)
+    //   - createdAt: number (required)
+    //
+    // Collection: announcements
+    // Document ID: {announcementId} (Auto-generated)
+    // Fields:
+    //   - title: string (required)
+    //   - content: string (required)
+    //   - category: string (required)
+    //   - date: number (required)
     //   - createdAt: number (required)
     //
     // ===============================================================
@@ -44,17 +65,22 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && 
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         (request.auth.token.email == "charlesmkonyi87@gmail.com" && request.auth.token.email_verified == true));
+         request.auth.token.email == "charlesmkonyi87@gmail.com");
     }
 
-    function isEditor() {
+    function isStaff() {
       return isAuthenticated() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'editor';
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'editor', 'bursar']);
+    }
+
+    function isBursar() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'bursar';
     }
 
     function isApproved() {
       return isAuthenticated() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approved == true;
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approved == true || isAdmin());
     }
 
     function isValidEmail(email) {
@@ -62,13 +88,13 @@ service cloud.firestore {
     }
 
     function isValidUser(data) {
-      return data.keys().hasOnly(['uid', 'name', 'email', 'program', 'registrationNumber', 'role', 'approved', 'createdAt']) &&
-             data.uid is string && data.uid == request.auth.uid &&
+      return data.keys().hasAll(['uid', 'name', 'email', 'program', 'registrationNumber', 'role', 'approved', 'createdAt']) &&
+             (!('lastLogin' in data) || data.lastLogin is number) &&
+             (!('feesRemaining' in data) || data.feesRemaining is number) &&
+             data.uid is string &&
              data.name is string && data.name.size() >= 2 && data.name.size() <= 100 &&
              isValidEmail(data.email) &&
-             data.program in ["Clinical Medicine", "Clinical Radiology"] &&
-             data.registrationNumber is string &&
-             data.role in ["student", "admin", "editor"] &&
+             data.role in ["student", "admin", "editor", "bursar"] &&
              data.approved is bool &&
              data.createdAt is number;
     }
@@ -84,38 +110,64 @@ service cloud.firestore {
              data.createdAt is number;
     }
 
+    function isValidTimetable(data) {
+      return data.keys().hasOnly(['program', 'year', 'semester', 'fileUrl', 'createdAt']) &&
+             data.program is string &&
+             data.year is string &&
+             data.semester is string &&
+             data.fileUrl is string &&
+             data.createdAt is number;
+    }
+
+    function isValidAnnouncement(data) {
+      return data.keys().hasOnly(['title', 'content', 'category', 'date', 'createdAt']) &&
+             data.title is string &&
+             data.content is string &&
+             data.category is string &&
+             data.date is number &&
+             data.createdAt is number;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
 
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin() || isEditor();
+      allow read: if isOwner(userId) || isStaff();
       
-      // Only allow users to create their own profile with 'student' role and approved=false
-      // Admin can create any profile
       allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
                       ((isOwner(userId) && request.resource.data.role == 'student' && request.resource.data.approved == false) || isAdmin());
       
-      // Users can update their own profile but NOT their role or approval status
-      // Admin can update anything
       allow update: if isAuthenticated() && isValidUser(request.resource.data) &&
                       ((isOwner(userId) && 
                         request.resource.data.role == resource.data.role && 
-                        request.resource.data.approved == resource.data.approved) || isAdmin());
+                        request.resource.data.approved == resource.data.approved &&
+                        request.resource.data.get('feesRemaining', 0) == resource.data.get('feesRemaining', 0)) || 
+                       isAdmin() ||
+                       (isBursar() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['feesRemaining'])));
       
       allow delete: if isAdmin();
     }
 
     match /results/{resultId} {
-      allow read: if isAuthenticated() && (isApproved() && request.auth.uid == resource.data.studentUid || isAdmin() || isEditor());
-      allow create: if isAdmin() && isValidResult(request.resource.data);
-      allow update: if isAdmin() && isValidResult(request.resource.data);
-      allow delete: if isAdmin();
+      allow read: if isAuthenticated() && (isApproved() && request.auth.uid == resource.data.studentUid || isStaff());
+      allow create: if isStaff() && !isBursar() && isValidResult(request.resource.data);
+      allow update: if isStaff() && !isBursar() && isValidResult(request.resource.data);
+      allow delete: if isStaff() && !isBursar();
+    }
+
+    match /timetables/{timetableId} {
+      allow read: if true;
+      allow create: if isStaff() && !isBursar() && isValidTimetable(request.resource.data);
+      allow update: if isStaff() && !isBursar() && isValidTimetable(request.resource.data);
+      allow delete: if isStaff() && !isBursar();
     }
 
     match /announcements/{announcementId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create: if isStaff() && !isBursar() && isValidAnnouncement(request.resource.data);
+      allow update: if isStaff() && !isBursar() && isValidAnnouncement(request.resource.data);
+      allow delete: if isStaff() && !isBursar();
     }
 
     // Connection test path

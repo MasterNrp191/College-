@@ -39,6 +39,7 @@ export default function Footer() {
               <li><Link to="/programs" className="hover:text-blue-500 transition-colors">Academic Programs</Link></li>
               <li><Link to="/admissions" className="hover:text-blue-500 transition-colors">Admissions</Link></li>
               <li><Link to="/portal" className="hover:text-blue-500 transition-colors">Student Portal</Link></li>
+              <li><Link to="/staff-portal" className="hover:text-blue-500 transition-colors">Staff Portal</Link></li>
             </ul>
           </div>
 

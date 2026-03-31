@@ -9,10 +9,10 @@ const values = [
 ];
 
 const staff = [
-  { name: "Dr. Jane Doe", role: "Principal", image: "https://i.pravatar.cc/150?u=jane" },
-  { name: "Dr. John Smith", role: "Head of Clinical Medicine", image: "https://i.pravatar.cc/150?u=john" },
-  { name: "Sarah Williams", role: "Head of Clinical Radiology", image: "https://i.pravatar.cc/150?u=sarah" },
-  { name: "Michael Brown", role: "Registrar", image: "https://i.pravatar.cc/150?u=michael" }
+  { name: "Dr. Jane Doe", role: "Principal", contact: "+255 712 345 678", quote: "Education is the most powerful weapon which you can use to change the world." },
+  { name: "Dr. John Smith", role: "Head of Clinical Medicine", contact: "+255 713 456 789", quote: "The art of medicine consists of amusing the patient while nature cures the disease." },
+  { name: "Sarah Williams", role: "Head of Clinical Radiology", contact: "+255 714 567 890", quote: "Radiology is the eye of medicine." },
+  { name: "Michael Brown", role: "Registrar", contact: "+255 715 678 901", quote: "Organization is the key to academic success." }
 ];
 
 export default function About() {
@@ -133,17 +133,17 @@ export default function About() {
               <motion.div
                 key={idx}
                 whileHover={{ y: -10 }}
-                className="bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 text-center"
+                className="bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 text-center p-8 flex flex-col items-center"
               >
-                <img
-                  src={member.image}
-                  alt={member.name}
-                  className="w-full h-64 object-cover"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="p-8">
-                  <h4 className="text-xl font-bold text-slate-900 mb-1">{member.name}</h4>
-                  <p className="text-blue-600 font-semibold text-sm uppercase tracking-widest">{member.role}</p>
+                <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mb-6">
+                  <Users className="h-10 w-10 text-blue-600" />
+                </div>
+                <h4 className="text-xl font-bold text-slate-900 mb-1">{member.name}</h4>
+                <p className="text-blue-600 font-semibold text-sm uppercase tracking-widest mb-4">{member.role}</p>
+                <div className="text-slate-500 text-sm mb-4 font-medium italic">"{member.quote}"</div>
+                <div className="mt-auto pt-4 border-t border-slate-50 w-full">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Contact</p>
+                  <p className="text-sm font-semibold text-slate-700">{member.contact}</p>
                 </div>
               </motion.div>
             ))}

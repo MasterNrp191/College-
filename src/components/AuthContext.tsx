@@ -15,8 +15,9 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   isEditor: boolean;
+  isBursar: boolean;
   login: (identifier: string, pass: string) => Promise<void>;
-  register: (regNumber: string, pass: string, name: string, program: string) => Promise<void>;
+  register: (identifier: string, pass: string, name: string, program: string, isStaff?: boolean, staffRole?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -76,50 +77,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     if (userDoc.exists()) {
       const userData = userDoc.data() as Student;
-      if (!userData.approved && userData.role !== 'admin') {
+      if (!userData.approved && userData.role === 'student') {
         await signOut(auth);
         throw new Error('Your account is pending approval by the administrator.');
       }
-      setUser(userData);
+      
+      // Update last login
+      const updatedData = { ...userData, lastLogin: Date.now() };
+      await setDoc(doc(db, 'users', firebaseUser.uid), updatedData);
+      setUser(updatedData);
     } else {
+      // Recovery for admin account if auth exists but firestore doc failed to create previously
+      if (email === 'charlesmkonyi87@gmail.com') {
+        const adminData: Student = {
+          uid: firebaseUser.uid,
+          name: 'System Admin',
+          email: email,
+          registrationNumber: 'STAFF',
+          program: 'Staff',
+          role: 'admin',
+          approved: true,
+          createdAt: Date.now(),
+          lastLogin: Date.now()
+        };
+        await setDoc(doc(db, 'users', firebaseUser.uid), adminData);
+        setUser(adminData);
+        return;
+      }
       await signOut(auth);
-      throw new Error('User profile not found.');
+      throw new Error('User profile not found. Please register again or contact support.');
     }
   };
 
-  const register = async (regNumber: string, pass: string, name: string, program: string) => {
-    const isAdminEmail = regNumber === 'charlesmkonyi87@gmail.com';
-    let email = '';
+  const register = async (identifier: string, pass: string, name: string, program: string, isStaff: boolean = false, staffRole: string = 'editor') => {
+    let email = identifier;
+    let regNumber = identifier;
 
-    if (isAdminEmail) {
-      email = regNumber;
-    } else {
-      // Validate registration number format: NS0108/0021/2024
-      const regRegex = /^[A-Z]{2}\d{4}\/\d{4}\/\d{4}$/;
-      if (!regRegex.test(regNumber)) {
-        throw new Error('Invalid registration number format. Expected: NS0108/0021/2024');
+    if (!isStaff) {
+      // Validate registration number format: NS0108/0021/2024 or KCOTC/2024/009
+      const regRegex = /^([A-Z]{2}\d{4}\/\d{4}\/\d{4}|KCOTC\/\d{4}\/\d{3})$/;
+      if (!regRegex.test(identifier)) {
+        throw new Error('Invalid registration number format. Expected: NS0108/0021/2024 or KCOTC/2024/009');
       }
-      email = `${regNumber.replace(/\//g, '_')}@kcotc.ac.tz`;
+      email = `${identifier.replace(/\//g, '_')}@kcotc.ac.tz`;
+    } else {
+      // Staff registration uses email
+      if (!identifier.includes('@')) {
+        throw new Error('Please enter a valid email address for staff registration.');
+      }
     }
 
     const { user: firebaseUser } = await createUserWithEmailAndPassword(auth, email, pass);
     
-    const role = email === 'charlesmkonyi87@gmail.com' ? 'admin' : 'student';
+    // Default admin email
+    const isAdminEmail = email === 'charlesmkonyi87@gmail.com';
+    const role = isAdminEmail ? 'admin' : (isStaff ? staffRole : 'student');
 
     const studentData: Student = {
       uid: firebaseUser.uid,
       name,
       email: email,
-      registrationNumber: regNumber,
-      program: program as any,
+      registrationNumber: isStaff ? 'STAFF' : regNumber,
+      program: isStaff ? 'Staff' : program as any,
       role: role as any,
-      approved: role === 'admin', // Admin is auto-approved
+      approved: role !== 'student', // Staff/Admin are auto-approved for now, or admin can manage
       createdAt: Date.now()
     };
 
     await setDoc(doc(db, 'users', firebaseUser.uid), studentData);
     
-    if (role !== 'admin') {
+    if (role === 'student') {
       await signOut(auth);
       throw new Error('Registration successful! Please wait for admin approval before logging in.');
     }
@@ -136,6 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading, 
       isAdmin: user?.role === 'admin',
       isEditor: user?.role === 'editor',
+      isBursar: user?.role === 'bursar',
       login, 
       register, 
       logout 

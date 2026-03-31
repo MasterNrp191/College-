@@ -22,7 +22,10 @@ import {
   Megaphone,
   Quote as QuoteIcon,
   Save,
-  X
+  X,
+  Calendar,
+  Heart,
+  Clock
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, orderBy, serverTimestamp } from 'firebase/firestore';
@@ -36,6 +39,7 @@ export default function Admin() {
   const [searchTerm, setSearchTerm] = useState('');
   const [allUsers, setAllUsers] = useState<Student[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [timetables, setTimetables] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -54,7 +58,7 @@ export default function Admin() {
     program: 'Clinical Medicine' as const
   });
 
-  const { logout, isAdmin, isEditor } = useAuth();
+  const { logout, isAdmin, isEditor, isBursar } = useAuth();
   const navigate = useNavigate();
 
   // Form state for results
@@ -70,7 +74,14 @@ export default function Admin() {
   const [announcementForm, setAnnouncementForm] = useState({
     title: '',
     content: '',
-    type: 'notice' as const
+    category: 'notice' as const
+  });
+
+  const [timetableForm, setTimetableForm] = useState({
+    program: 'Clinical Medicine',
+    year: '2024/2025',
+    semester: 'Semester 1',
+    fileUrl: ''
   });
 
   useEffect(() => {
@@ -96,6 +107,16 @@ export default function Admin() {
       setAnnouncements(annData);
     });
 
+    // Fetch Timetables
+    const tq = query(collection(db, 'timetables'), orderBy('createdAt', 'desc'));
+    const unsubscribeTimetables = onSnapshot(tq, (snapshot) => {
+      const tData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setTimetables(tData);
+    });
+
     // Rotate quotes
     const quoteInterval = setInterval(() => {
       const randomIndex = Math.floor(Math.random() * MEDICAL_QUOTES.length);
@@ -105,6 +126,7 @@ export default function Admin() {
     return () => {
       unsubscribe();
       unsubscribeAnnouncements();
+      unsubscribeTimetables();
       clearInterval(quoteInterval);
     };
   }, []);
@@ -188,9 +210,10 @@ export default function Admin() {
     try {
       await addDoc(collection(db, 'announcements'), {
         ...announcementForm,
+        date: Date.now(),
         createdAt: Date.now()
       });
-      setAnnouncementForm({ title: '', content: '', type: 'notice' });
+      setAnnouncementForm({ title: '', content: '', category: 'notice' });
       setMessage({ type: 'success', text: 'Announcement posted!' });
     } catch (error) {
       console.error("Error posting announcement:", error);
@@ -203,6 +226,47 @@ export default function Admin() {
       await deleteDoc(doc(db, 'announcements', id));
     } catch (error) {
       console.error("Error deleting announcement:", error);
+    }
+  };
+
+  const handleAddTimetable = async (e: FormEvent) => {
+    e.preventDefault();
+    try {
+      await addDoc(collection(db, 'timetables'), {
+        ...timetableForm,
+        createdAt: Date.now()
+      });
+      setTimetableForm({ program: 'Clinical Medicine', year: '2024/2025', semester: 'Semester 1', fileUrl: '' });
+      setMessage({ type: 'success', text: 'Timetable added successfully!' });
+    } catch (err) {
+      console.error("Error adding timetable:", err);
+      setMessage({ type: 'error', text: 'Failed to add timetable.' });
+    }
+  };
+
+  const handleDeleteTimetable = async (id: string) => {
+    if (window.confirm('Delete this timetable?')) {
+      await deleteDoc(doc(db, 'timetables', id));
+    }
+  };
+
+  const seedSampleData = async () => {
+    if (!window.confirm('This will seed sample data for testing. Continue?')) return;
+    
+    try {
+      // Sample Timetable
+      await addDoc(collection(db, 'timetables'), {
+        program: 'Clinical Medicine',
+        year: '2024/2025',
+        semester: 'Semester 1',
+        fileUrl: 'https://example.com/timetable.pdf',
+        createdAt: Date.now()
+      });
+
+      setMessage({ type: 'success', text: 'Sample data seeded successfully!' });
+    } catch (err) {
+      console.error("Seed error:", err);
+      setMessage({ type: 'error', text: 'Failed to seed data.' });
     }
   };
 
@@ -241,10 +305,10 @@ export default function Admin() {
   const handleAddStudent = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      // Validate registration number format: NS0108/0021/2024
-      const regRegex = /^[A-Z]{2}\d{4}\/\d{4}\/\d{4}$/;
+      // Validate registration number format: NS0108/0021/2024 or KCOTC/2024/009
+      const regRegex = /^([A-Z]{2}\d{4}\/\d{4}\/\d{4}|KCOTC\/\d{4}\/\d{3})$/;
       if (!regRegex.test(addStudentForm.registrationNumber)) {
-        setMessage({ type: 'error', text: 'Invalid registration number format. Expected: NS0108/0021/2024' });
+        setMessage({ type: 'error', text: 'Invalid registration number format. Expected: NS0108/0021/2024 or KCOTC/2024/009' });
         return;
       }
 
@@ -308,7 +372,7 @@ export default function Admin() {
 
   const students = allUsers.filter(u => u.role === 'student' && u.approved);
   const pending = allUsers.filter(u => u.role === 'student' && !u.approved);
-  const staff = allUsers.filter(u => u.role === 'admin' || u.role === 'editor');
+  const staff = allUsers.filter(u => u.role === 'admin' || u.role === 'editor' || u.role === 'bursar');
 
   const filteredList = (list: Student[]) => list.filter(s => 
     s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -324,7 +388,7 @@ export default function Admin() {
             <div className="bg-blue-600 p-2 rounded-lg">
               <ShieldCheck className="h-6 w-6 text-white" />
             </div>
-            <span className="text-xl font-bold text-white tracking-tight">Admin Panel</span>
+            <span className="text-xl font-bold text-white tracking-tight">Staff Panel</span>
           </div>
         </div>
 
@@ -336,9 +400,15 @@ export default function Admin() {
               { id: 'students', label: 'Students', icon: Users },
               { id: 'staff', label: 'Staff & Editors', icon: ShieldCheck },
             ] : []),
-            { id: 'results', label: 'Upload Results', icon: Upload },
-            { id: 'announcements', label: 'Announcements', icon: Megaphone },
-          ].map(tab => (
+            ...(isBursar ? [
+              { id: 'students', label: 'Students', icon: Users },
+            ] : []),
+            ...(!isBursar ? [
+              { id: 'results', label: 'Upload Results', icon: Upload },
+              { id: 'timetables', label: 'Timetables', icon: Calendar },
+              { id: 'announcements', label: 'Announcements', icon: Megaphone },
+            ] : []),
+          ].filter((tab, index, self) => self.findIndex(t => t.id === tab.id) === index).map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
@@ -391,7 +461,7 @@ export default function Admin() {
                 className="bg-white border border-slate-200 rounded-xl pl-12 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all w-64"
               />
             </div>
-            {activeTab === 'students' && (
+            {activeTab === 'students' && isAdmin && (
               <button 
                 onClick={() => setIsAddModalOpen(true)}
                 className="bg-blue-600 text-white hover:bg-blue-700 px-4 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-blue-200 flex items-center space-x-2"
@@ -439,6 +509,25 @@ export default function Admin() {
               ))}
             </div>
 
+            <div className="bg-blue-600 rounded-3xl p-10 text-white relative overflow-hidden shadow-xl shadow-blue-900/20">
+              <div className="absolute top-0 right-0 p-8 opacity-10">
+                <ShieldCheck className="h-32 w-32" />
+              </div>
+              <div className="relative z-10 space-y-6 max-w-2xl">
+                <h3 className="text-3xl font-bold">System Maintenance</h3>
+                <p className="text-blue-100 text-lg leading-relaxed">
+                  Use the button below to seed sample data for testing purposes. This will add a sample timetable and donation record.
+                </p>
+                <button 
+                  onClick={seedSampleData}
+                  className="bg-white text-blue-600 hover:bg-blue-50 px-8 py-3 rounded-xl font-bold transition-all active:scale-95 flex items-center space-x-2"
+                >
+                  <Plus className="h-5 w-5" />
+                  <span>Seed Sample Data</span>
+                </button>
+              </div>
+            </div>
+
             {/* Quote of the Moment */}
             <div className="bg-blue-600 rounded-3xl p-10 text-white relative overflow-hidden shadow-xl shadow-blue-200">
               <div className="absolute top-0 right-0 p-8 opacity-10">
@@ -467,7 +556,7 @@ export default function Admin() {
                       <h4 className="font-bold text-slate-900">{ann.title}</h4>
                       <p className="text-slate-500 text-sm mt-1 line-clamp-2">{ann.content}</p>
                       <div className="flex items-center space-x-4 mt-3 text-xs font-bold text-slate-400 uppercase tracking-widest">
-                        <span>{ann.type}</span>
+                        <span>{ann.category}</span>
                         <span>•</span>
                         <span>{new Date(ann.createdAt).toLocaleDateString()}</span>
                       </div>
@@ -565,10 +654,14 @@ export default function Admin() {
                       <td className="px-8 py-5"><span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-lg font-bold text-xs">{user.program}</span></td>
                       <td className="px-8 py-5 text-slate-500 text-sm">{user.email}</td>
                       <td className="px-8 py-5 text-right">
-                        <div className="flex justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => handleEditUser(user)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit className="h-4 w-4" /></button>
-                          <button onClick={() => handleDeleteUser(user.id!)} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 className="h-4 w-4" /></button>
-                        </div>
+                        {(isAdmin || isBursar) && (
+                          <div className="flex justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => handleEditUser(user)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit className="h-4 w-4" /></button>
+                            {isAdmin && (
+                              <button onClick={() => handleDeleteUser(user.id!)} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 className="h-4 w-4" /></button>
+                            )}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -620,6 +713,7 @@ export default function Admin() {
                         >
                           <option value="admin">Admin</option>
                           <option value="editor">Editor</option>
+                          <option value="bursar">Bursar</option>
                           <option value="student">Student</option>
                         </select>
                       </td>
@@ -735,6 +829,97 @@ export default function Admin() {
           </div>
         )}
 
+        {activeTab === 'timetables' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+            <div className="lg:col-span-1 space-y-8">
+              <form onSubmit={handleAddTimetable} className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                <h3 className="text-xl font-bold text-slate-900 mb-4">Add Timetable</h3>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Program</label>
+                  <select 
+                    value={timetableForm.program}
+                    onChange={(e) => setTimetableForm({...timetableForm, program: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all appearance-none"
+                  >
+                    <option value="Clinical Medicine">Clinical Medicine</option>
+                    <option value="Clinical Radiology">Clinical Radiology</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Year</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={timetableForm.year}
+                    onChange={(e) => setTimetableForm({...timetableForm, year: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all" 
+                    placeholder="e.g. 2024/2025" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Semester</label>
+                  <select 
+                    value={timetableForm.semester}
+                    onChange={(e) => setTimetableForm({...timetableForm, semester: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all appearance-none"
+                  >
+                    <option value="Semester 1">Semester 1</option>
+                    <option value="Semester 2">Semester 2</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Document URL</label>
+                  <input 
+                    type="url" 
+                    required
+                    value={timetableForm.fileUrl}
+                    onChange={(e) => setTimetableForm({...timetableForm, fileUrl: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all" 
+                    placeholder="https://..." 
+                  />
+                </div>
+                <button 
+                  type="submit"
+                  className="w-full bg-blue-600 text-white hover:bg-blue-700 px-8 py-4 rounded-xl text-lg font-bold transition-all shadow-lg shadow-blue-200 active:scale-95"
+                >
+                  Upload Timetable
+                </button>
+              </form>
+            </div>
+
+            <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="p-8 border-b border-slate-50">
+                <h3 className="text-xl font-bold text-slate-900">Active Timetables</h3>
+              </div>
+              <div className="divide-y divide-slate-50">
+                {timetables.map((tt, idx) => (
+                  <div key={idx} className="p-8 flex items-start justify-between group">
+                    <div className="flex items-start space-x-4">
+                      <div className="bg-slate-100 p-3 rounded-xl">
+                        <Calendar className="h-5 w-5 text-slate-600" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-900">{tt.program}</h4>
+                        <p className="text-slate-500 text-sm mt-1">{tt.year} - {tt.semester}</p>
+                        <a href={tt.url} target="_blank" rel="noreferrer" className="text-blue-600 text-xs font-bold mt-2 inline-block hover:underline">View Document</a>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => handleDeleteTimetable(tt.id)}
+                      className="p-2 text-slate-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+                {timetables.length === 0 && (
+                  <div className="p-12 text-center text-slate-500">No timetables uploaded yet.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'announcements' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
             <div className="bg-white p-10 rounded-3xl border border-slate-100 shadow-sm space-y-8">
@@ -764,8 +949,8 @@ export default function Admin() {
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Type</label>
                   <select 
                     required
-                    value={announcementForm.type}
-                    onChange={(e) => setAnnouncementForm({...announcementForm, type: e.target.value as any})}
+                    value={announcementForm.category}
+                    onChange={(e) => setAnnouncementForm({...announcementForm, category: e.target.value as any})}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-purple-600 transition-all appearance-none"
                   >
                     <option value="notice">Notice</option>
@@ -808,7 +993,7 @@ export default function Admin() {
                         <h4 className="font-bold text-slate-900">{ann.title}</h4>
                         <p className="text-slate-500 text-sm mt-1">{ann.content}</p>
                         <div className="flex items-center space-x-4 mt-3 text-xs font-bold text-slate-400 uppercase tracking-widest">
-                          <span className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded">{ann.type}</span>
+                          <span className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded">{ann.category}</span>
                           <span>{new Date(ann.createdAt).toLocaleDateString()}</span>
                         </div>
                       </div>
@@ -947,6 +1132,17 @@ export default function Admin() {
                     <option value="Clinical Radiology">Clinical Radiology</option>
                   </select>
                 </div>
+                {(isBursar || isAdmin) && (
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Fees Remaining (TZS)</label>
+                    <input 
+                      type="number" 
+                      value={editingUser.feesRemaining || 0}
+                      onChange={(e) => setEditingUser({...editingUser, feesRemaining: Number(e.target.value)})}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                    />
+                  </div>
+                )}
                 <div className="pt-4 flex space-x-4">
                   <button 
                     type="button"

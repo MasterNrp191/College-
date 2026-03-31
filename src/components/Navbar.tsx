@@ -68,13 +68,22 @@ export default function Navbar() {
                 </button>
               </div>
             ) : (
-              <Link
-                to="/portal"
-                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-all shadow-md hover:shadow-lg active:scale-95"
-              >
-                <User className="h-4 w-4" />
-                <span>Student Portal</span>
-              </Link>
+              <div className="flex items-center space-x-3">
+                <Link
+                  to="/portal"
+                  className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-all shadow-md hover:shadow-lg active:scale-95"
+                >
+                  <User className="h-4 w-4" />
+                  <span>Student Portal</span>
+                </Link>
+                <Link
+                  to="/staff-portal"
+                  className="flex items-center space-x-2 bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-all shadow-md hover:shadow-lg active:scale-95"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  <span>Staff Portal</span>
+                </Link>
+              </div>
             )}
           </div>
 
@@ -138,14 +147,24 @@ export default function Navbar() {
                     </button>
                   </div>
                 ) : (
-                  <Link
-                    to="/portal"
-                    onClick={() => setIsOpen(false)}
-                    className="flex items-center justify-center space-x-2 w-full bg-blue-600 text-white px-4 py-3 rounded-lg text-base font-semibold shadow-md"
-                  >
-                    <User className="h-5 w-5" />
-                    <span>Student Portal</span>
-                  </Link>
+                  <div className="space-y-2">
+                    <Link
+                      to="/portal"
+                      onClick={() => setIsOpen(false)}
+                      className="flex items-center justify-center space-x-2 w-full bg-blue-600 text-white px-4 py-3 rounded-lg text-base font-semibold shadow-md"
+                    >
+                      <User className="h-5 w-5" />
+                      <span>Student Portal</span>
+                    </Link>
+                    <Link
+                      to="/staff-portal"
+                      onClick={() => setIsOpen(false)}
+                      className="flex items-center justify-center space-x-2 w-full bg-slate-800 text-white px-4 py-3 rounded-lg text-base font-semibold shadow-md"
+                    >
+                      <ShieldCheck className="h-5 w-5" />
+                      <span>Staff Portal</span>
+                    </Link>
+                  </div>
                 )}
               </div>
             </div>

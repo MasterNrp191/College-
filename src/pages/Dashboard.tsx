@@ -14,7 +14,10 @@ import {
   Clock,
   CheckCircle2,
   Megaphone,
-  Quote as QuoteIcon
+  Quote as QuoteIcon,
+  Heart,
+  Download,
+  ExternalLink
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/components/AuthContext';
@@ -27,6 +30,7 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('overview');
   const [results, setResults] = useState<Result[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [timetables, setTimetables] = useState<any[]>([]);
   const [currentQuote, setCurrentQuote] = useState(MEDICAL_QUOTES[0]);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -59,6 +63,15 @@ export default function Dashboard() {
       setAnnouncements(annData);
     });
 
+    const tq = query(collection(db, 'timetables'), orderBy('createdAt', 'desc'));
+    const unsubscribeTimetables = onSnapshot(tq, (snapshot) => {
+      const tData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setTimetables(tData);
+    });
+
     // Rotate quotes
     const quoteInterval = setInterval(() => {
       const randomIndex = Math.floor(Math.random() * MEDICAL_QUOTES.length);
@@ -68,9 +81,17 @@ export default function Dashboard() {
     return () => {
       unsubscribe();
       unsubscribeAnnouncements();
+      unsubscribeTimetables();
       clearInterval(quoteInterval);
     };
   }, [user]);
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -110,6 +131,15 @@ export default function Dashboard() {
           >
             <Award className="h-5 w-5" />
             <span>Academic Results</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('timetables')}
+            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+              activeTab === 'timetables' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'text-slate-600 hover:bg-slate-50 hover:text-blue-600'
+            }`}
+          >
+            <Calendar className="h-5 w-5" />
+            <span>Timetables</span>
           </button>
           <button
             onClick={() => setActiveTab('profile')}
@@ -156,7 +186,7 @@ export default function Dashboard() {
         {/* Header */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 space-y-4 md:space-y-0">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Welcome back, {user.name}!</h1>
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{getGreeting()}, {user.name}!</h1>
             <p className="text-slate-500 font-medium mt-1">Here's what's happening with your academic progress.</p>
           </div>
           <div className="flex items-center space-x-4">
@@ -189,8 +219,12 @@ export default function Dashboard() {
                   <div className="bg-green-50 w-12 h-12 rounded-xl flex items-center justify-center">
                     <Award className="h-6 w-6 text-green-600" />
                   </div>
-                  <div className="text-sm font-bold text-slate-500 uppercase tracking-widest">GPA</div>
-                  <div className="text-2xl font-bold text-slate-900">3.8 / 4.0</div>
+                  <div className="text-sm font-bold text-slate-500 uppercase tracking-widest">Fees Remaining</div>
+                  <div className="text-2xl font-bold text-slate-900">
+                    {user.feesRemaining !== undefined 
+                        ? (user.feesRemaining === 0 ? 'All Paid' : `${user.feesRemaining.toLocaleString()} TZS`) 
+                        : 'Not Set'}
+                  </div>
                 </div>
                 <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-4">
                   <div className="bg-blue-50 w-12 h-12 rounded-xl flex items-center justify-center">
@@ -324,11 +358,11 @@ export default function Dashboard() {
                     <div>
                       <div className="flex items-center space-x-3 mb-2">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest ${
-                          ann.type === 'exam' ? 'bg-red-50 text-red-600' : 
-                          ann.type === 'event' ? 'bg-purple-50 text-purple-600' : 
+                          ann.category === 'exam' ? 'bg-red-50 text-red-600' : 
+                          ann.category === 'event' ? 'bg-purple-50 text-purple-600' : 
                           'bg-blue-50 text-blue-600'
                         }`}>
-                          {ann.type}
+                          {ann.category}
                         </span>
                         <span className="text-xs text-slate-400 font-medium">{new Date(ann.createdAt).toLocaleDateString()}</span>
                       </div>
@@ -340,6 +374,43 @@ export default function Dashboard() {
                 {announcements.length === 0 && (
                   <div className="p-12 text-center text-slate-500">No announcements at the moment.</div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'timetables' && (
+            <div className="space-y-8">
+              <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+                <h3 className="text-xl font-bold text-slate-900 mb-6">Academic Timetables</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {timetables.map((tt, idx) => (
+                    <div key={idx} className="p-6 border border-slate-100 rounded-2xl bg-slate-50 flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className="bg-blue-100 p-3 rounded-xl">
+                          <Calendar className="h-6 w-6 text-blue-600" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-slate-900">{tt.program}</div>
+                          <div className="text-sm text-slate-500">{tt.year} - {tt.semester}</div>
+                        </div>
+                      </div>
+                      <a 
+                        href={tt.url} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="p-2 bg-white border border-slate-200 rounded-lg text-blue-600 hover:bg-blue-50 transition-all"
+                      >
+                        <Download className="h-5 w-5" />
+                      </a>
+                    </div>
+                  ))}
+                  {timetables.length === 0 && (
+                    <div className="col-span-full p-12 text-center text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                      <Calendar className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                      <p>No timetables uploaded yet.</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -367,8 +438,12 @@ export default function Dashboard() {
                     <div className="text-lg font-semibold text-slate-700">{user.registrationNumber}</div>
                   </div>
                   <div className="space-y-1">
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">Academic Year</div>
-                    <div className="text-lg font-semibold text-slate-700">Year 1</div>
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">Fees Remaining</div>
+                    <div className="text-lg font-semibold text-slate-700">
+                      {user.feesRemaining !== undefined 
+                        ? (user.feesRemaining === 0 ? 'All Paid' : `${user.feesRemaining.toLocaleString()} TZS`) 
+                        : 'Not Set'}
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">Current Semester</div>

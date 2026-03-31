@@ -1,4 +1,13 @@
-export type UserRole = 'student' | 'admin' | 'editor';
+export type UserRole = 'student' | 'admin' | 'editor' | 'bursar';
+
+export interface Timetable {
+  id: string;
+  year: string;
+  semester: string;
+  program: string;
+  url: string; // Link to PDF or image
+  createdAt: number;
+}
 
 export interface Student {
   id?: string;
@@ -6,10 +15,12 @@ export interface Student {
   name: string;
   email: string;
   registrationNumber: string;
-  program: 'Clinical Medicine' | 'Clinical Radiology';
+  program: 'Clinical Medicine' | 'Clinical Radiology' | 'Staff';
   role: UserRole;
   approved: boolean;
+  feesRemaining?: number;
   createdAt: number;
+  lastLogin?: number;
 }
 
 export interface Result {

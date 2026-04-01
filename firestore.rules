@@ -13,11 +13,22 @@ service cloud.firestore {
     //   - email: string (required, valid email)
     //   - program: string (required)
     //   - registrationNumber: string (required)
-    //   - role: string (required, enum: ["student", "admin", "editor", "bursar"])
+    //   - role: string (required, enum: ["student", "admin", "editor", "bursar", "lecturer", "registrar", "other"])
     //   - approved: bool (required)
     //   - feesRemaining: number (optional)
     //   - createdAt: number (required)
     //   - lastLogin: number (optional)
+    //
+    // Collection: messages
+    // Document ID: {messageId} (Auto-generated)
+    // Fields:
+    //   - senderId: string (required)
+    //   - senderName: string (required)
+    //   - subject: string (required)
+    //   - content: string (required)
+    //   - reply: string (optional)
+    //   - isRead: bool (required)
+    //   - createdAt: number (required)
     //
     // Collection: results
     // Document ID: {resultId} (Auto-generated)
@@ -70,7 +81,7 @@ service cloud.firestore {
 
     function isStaff() {
       return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'editor', 'bursar']);
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'editor', 'bursar', 'lecturer', 'registrar', 'other']);
     }
 
     function isBursar() {
@@ -94,8 +105,19 @@ service cloud.firestore {
              data.uid is string &&
              data.name is string && data.name.size() >= 2 && data.name.size() <= 100 &&
              isValidEmail(data.email) &&
-             data.role in ["student", "admin", "editor", "bursar"] &&
+             data.role in ["student", "admin", "editor", "bursar", "lecturer", "registrar", "other"] &&
              data.approved is bool &&
+             data.createdAt is number;
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['senderId', 'senderName', 'subject', 'content', 'isRead', 'createdAt']) &&
+             (!('reply' in data) || data.reply is string) &&
+             data.senderId is string &&
+             data.senderName is string &&
+             data.subject is string &&
+             data.content is string &&
+             data.isRead is bool &&
              data.createdAt is number;
     }
 
@@ -136,7 +158,7 @@ service cloud.firestore {
       allow read: if isOwner(userId) || isStaff();
       
       allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
-                      ((isOwner(userId) && request.resource.data.role == 'student' && request.resource.data.approved == false) || isAdmin());
+                      ((isOwner(userId) && request.resource.data.approved == false) || isAdmin());
       
       allow update: if isAuthenticated() && isValidUser(request.resource.data) &&
                       ((isOwner(userId) && 
@@ -168,6 +190,13 @@ service cloud.firestore {
       allow create: if isStaff() && !isBursar() && isValidAnnouncement(request.resource.data);
       allow update: if isStaff() && !isBursar() && isValidAnnouncement(request.resource.data);
       allow delete: if isStaff() && !isBursar();
+    }
+
+    match /messages/{messageId} {
+      allow read: if isAuthenticated() && (isOwner(resource.data.senderId) || isAdmin());
+      allow create: if isAuthenticated() && isOwner(request.resource.data.senderId) && isValidMessage(request.resource.data);
+      allow update: if isAuthenticated() && isAdmin() && isValidMessage(request.resource.data) && request.resource.data.senderId == resource.data.senderId;
+      allow delete: if isAdmin();
     }
 
     // Connection test path

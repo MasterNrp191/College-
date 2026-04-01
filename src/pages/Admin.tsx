@@ -25,12 +25,15 @@ import {
   X,
   Calendar,
   Heart,
-  Clock
+  Clock,
+  MessageSquare,
+  Menu,
+  Settings
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, orderBy, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/firebase';
-import { Student, Result, Announcement, UserRole } from '@/types';
+import { Student, Result, Announcement, UserRole, Message } from '@/types';
 import { useAuth } from '@/components/AuthContext';
 import { MEDICAL_QUOTES } from '@/constants/quotes';
 
@@ -40,11 +43,13 @@ export default function Admin() {
   const [allUsers, setAllUsers] = useState<Student[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [timetables, setTimetables] = useState<any[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [currentQuote, setCurrentQuote] = useState(MEDICAL_QUOTES[0]);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // Edit Modal State
   const [editingUser, setEditingUser] = useState<Student | null>(null);
@@ -117,6 +122,16 @@ export default function Admin() {
       setTimetables(tData);
     });
 
+    // Fetch Messages
+    const mq = query(collection(db, 'messages'), orderBy('createdAt', 'desc'));
+    const unsubscribeMessages = onSnapshot(mq, (snapshot) => {
+      const mData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as any as Message[];
+      setMessages(mData);
+    });
+
     // Rotate quotes
     const quoteInterval = setInterval(() => {
       const randomIndex = Math.floor(Math.random() * MEDICAL_QUOTES.length);
@@ -127,6 +142,7 @@ export default function Admin() {
       unsubscribe();
       unsubscribeAnnouncements();
       unsubscribeTimetables();
+      unsubscribeMessages();
       clearInterval(quoteInterval);
     };
   }, []);
@@ -139,10 +155,10 @@ export default function Admin() {
   const handleApprove = async (userId: string) => {
     try {
       await updateDoc(doc(db, 'users', userId), { approved: true });
-      setMessage({ type: 'success', text: 'Student account approved!' });
+      setMessage({ type: 'success', text: 'Account approved successfully!' });
     } catch (error) {
-      console.error("Error approving student:", error);
-      setMessage({ type: 'error', text: 'Failed to approve student.' });
+      console.error("Error approving account:", error);
+      setMessage({ type: 'error', text: 'Failed to approve account.' });
     }
   };
 
@@ -152,8 +168,8 @@ export default function Admin() {
         await deleteDoc(doc(db, 'users', userId));
         setMessage({ type: 'success', text: 'Registration rejected and removed.' });
       } catch (error) {
-        console.error("Error rejecting student:", error);
-        setMessage({ type: 'error', text: 'Failed to reject student.' });
+        console.error("Error rejecting account:", error);
+        setMessage({ type: 'error', text: 'Failed to reject account.' });
       }
     }
   };
@@ -371,8 +387,9 @@ export default function Admin() {
   };
 
   const students = allUsers.filter(u => u.role === 'student' && u.approved);
-  const pending = allUsers.filter(u => u.role === 'student' && !u.approved);
-  const staff = allUsers.filter(u => u.role === 'admin' || u.role === 'editor' || u.role === 'bursar');
+  const pending = allUsers.filter(u => !u.approved);
+  const staff = allUsers.filter(u => u.role !== 'student' && u.approved);
+  const unreadMessages = messages.filter(m => !m.isRead);
 
   const filteredList = (list: Student[]) => list.filter(s => 
     s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -407,6 +424,8 @@ export default function Admin() {
               { id: 'results', label: 'Upload Results', icon: Upload },
               { id: 'timetables', label: 'Timetables', icon: Calendar },
               { id: 'announcements', label: 'Announcements', icon: Megaphone },
+              { id: 'messages', label: 'Messages', icon: MessageSquare, count: unreadMessages.length },
+              { id: 'settings', label: 'Settings', icon: Settings },
             ] : []),
           ].filter((tab, index, self) => self.findIndex(t => t.id === tab.id) === index).map(tab => (
             <button
@@ -575,15 +594,15 @@ export default function Admin() {
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
             <div className="p-8 border-b border-slate-50">
               <h3 className="text-xl font-bold text-slate-900">Pending Registrations</h3>
-              <p className="text-slate-500 text-sm mt-1">Review and approve new student accounts.</p>
+              <p className="text-slate-500 text-sm mt-1">Review and approve new student and staff accounts.</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-widest">
                   <tr>
-                    <th className="px-8 py-4">Student Name</th>
-                    <th className="px-8 py-4">Reg Number</th>
-                    <th className="px-8 py-4">Program</th>
+                    <th className="px-8 py-4">Name</th>
+                    <th className="px-8 py-4">Reg Number / Email</th>
+                    <th className="px-8 py-4">Role / Program</th>
                     <th className="px-8 py-4">Date</th>
                     <th className="px-8 py-4 text-right">Actions</th>
                   </tr>
@@ -592,8 +611,14 @@ export default function Admin() {
                   {filteredList(pending).map((user, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition-colors">
                       <td className="px-8 py-5 font-semibold text-slate-700">{user.name}</td>
-                      <td className="px-8 py-5 text-slate-500 font-mono text-sm">{user.registrationNumber}</td>
-                      <td className="px-8 py-5"><span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-lg font-bold text-xs">{user.program}</span></td>
+                      <td className="px-8 py-5 text-slate-500 font-mono text-sm">
+                        {user.role === 'student' ? user.registrationNumber : user.email}
+                      </td>
+                      <td className="px-8 py-5">
+                        <span className={`px-3 py-1 rounded-lg font-bold text-xs ${user.role === 'student' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
+                          {user.role === 'student' ? user.program : user.role.toUpperCase()}
+                        </span>
+                      </td>
                       <td className="px-8 py-5 text-slate-500 text-sm">{new Date(user.createdAt).toLocaleDateString()}</td>
                       <td className="px-8 py-5 text-right">
                         <div className="flex justify-end space-x-2">
@@ -714,6 +739,9 @@ export default function Admin() {
                           <option value="admin">Admin</option>
                           <option value="editor">Editor</option>
                           <option value="bursar">Bursar</option>
+                          <option value="lecturer">Lecturer</option>
+                          <option value="registrar">Registrar</option>
+                          <option value="other">Other</option>
                           <option value="student">Student</option>
                         </select>
                       </td>
@@ -901,7 +929,7 @@ export default function Admin() {
                       <div>
                         <h4 className="font-bold text-slate-900">{tt.program}</h4>
                         <p className="text-slate-500 text-sm mt-1">{tt.year} - {tt.semester}</p>
-                        <a href={tt.url} target="_blank" rel="noreferrer" className="text-blue-600 text-xs font-bold mt-2 inline-block hover:underline">View Document</a>
+                        <a href={tt.fileUrl} target="_blank" rel="noreferrer" className="text-blue-600 text-xs font-bold mt-2 inline-block hover:underline">View Document</a>
                       </div>
                     </div>
                     <button 
@@ -1006,6 +1034,128 @@ export default function Admin() {
                     </button>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        )}
+        {activeTab === 'messages' && (
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="p-8 border-b border-slate-50">
+              <h3 className="text-xl font-bold text-slate-900">Messages</h3>
+              <p className="text-slate-500 text-sm mt-1">View and reply to messages from students.</p>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {messages.map((msg) => (
+                <div key={msg.id} className={`p-8 ${!msg.isRead ? 'bg-blue-50/50' : ''}`}>
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h4 className="font-bold text-slate-900">{msg.subject}</h4>
+                      <p className="text-sm text-slate-500">From: {msg.senderName}</p>
+                    </div>
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                      {new Date(msg.createdAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <p className="text-slate-700 mb-4">{msg.content}</p>
+                  
+                  {msg.reply ? (
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Your Reply</p>
+                      <p className="text-slate-700">{msg.reply}</p>
+                    </div>
+                  ) : (
+                    <form 
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        const form = e.target as HTMLFormElement;
+                        const replyContent = (form.elements.namedItem('reply') as HTMLTextAreaElement).value;
+                        if (!replyContent) return;
+                        
+                        try {
+                          await updateDoc(doc(db, 'messages', msg.id!), {
+                            reply: replyContent,
+                            isRead: true
+                          });
+                          setMessage({ type: 'success', text: 'Reply sent successfully!' });
+                        } catch (err) {
+                          console.error('Error replying:', err);
+                          setMessage({ type: 'error', text: 'Failed to send reply.' });
+                        }
+                      }}
+                      className="mt-4 space-y-4"
+                    >
+                      <textarea
+                        name="reply"
+                        required
+                        placeholder="Write your reply..."
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                        rows={3}
+                      />
+                      <div className="flex justify-end">
+                        <button 
+                          type="submit"
+                          className="bg-blue-600 text-white hover:bg-blue-700 px-6 py-2 rounded-xl text-sm font-bold transition-all shadow-sm"
+                        >
+                          Send Reply
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              ))}
+              {messages.length === 0 && (
+                <div className="p-12 text-center text-slate-500">No messages found.</div>
+              )}
+            </div>
+          </div>
+        )}
+        {activeTab === 'settings' && (
+          <div className="max-w-3xl space-y-8">
+            <div className="bg-white p-10 rounded-3xl border border-slate-100 shadow-sm space-y-8">
+              <div className="flex items-center space-x-4 mb-8">
+                <div className="bg-slate-100 w-12 h-12 rounded-xl flex items-center justify-center text-slate-600">
+                  <Settings className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-slate-900">Admin Settings</h3>
+                  <p className="text-slate-500 text-sm">Manage system preferences and configurations.</p>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                  <div>
+                    <div className="font-bold text-slate-900">Email Notifications</div>
+                    <div className="text-sm text-slate-500">Receive updates about new registrations.</div>
+                  </div>
+                  <div className="w-12 h-6 bg-blue-600 rounded-full relative cursor-pointer">
+                    <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm" />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                  <div>
+                    <div className="font-bold text-slate-900">System Maintenance Mode</div>
+                    <div className="text-sm text-slate-500">Temporarily disable student access.</div>
+                  </div>
+                  <div className="w-12 h-6 bg-slate-200 rounded-full relative cursor-pointer">
+                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm" />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                  <div>
+                    <div className="font-bold text-slate-900">Auto-Approve Students</div>
+                    <div className="text-sm text-slate-500">Automatically approve new student signups.</div>
+                  </div>
+                  <div className="w-12 h-6 bg-slate-200 rounded-full relative cursor-pointer">
+                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-8 border-t border-slate-50">
+                <button className="text-red-600 font-bold text-sm hover:underline">
+                  Clear System Cache
+                </button>
               </div>
             </div>
           </div>

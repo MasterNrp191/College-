@@ -17,13 +17,14 @@ import {
   Quote as QuoteIcon,
   Heart,
   Download,
-  ExternalLink
+  ExternalLink,
+  MessageSquare
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/components/AuthContext';
-import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, limit, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/firebase';
-import { Result, Announcement } from '@/types';
+import { Result, Announcement, Message } from '@/types';
 import { MEDICAL_QUOTES } from '@/constants/quotes';
 
 export default function Dashboard() {
@@ -31,7 +32,10 @@ export default function Dashboard() {
   const [results, setResults] = useState<Result[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [timetables, setTimetables] = useState<any[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [currentQuote, setCurrentQuote] = useState(MEDICAL_QUOTES[0]);
+  const [messageForm, setMessageForm] = useState({ subject: '', content: '' });
+  const [formStatus, setFormStatus] = useState({ type: '', text: '' });
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -40,8 +44,7 @@ export default function Dashboard() {
 
     const q = query(
       collection(db, 'results'),
-      where('studentUid', '==', user.uid),
-      orderBy('createdAt', 'desc')
+      where('studentUid', '==', user.uid)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -49,6 +52,8 @@ export default function Dashboard() {
         id: doc.id,
         ...doc.data()
       })) as Result[];
+      // Sort client-side to avoid requiring a composite index
+      resultsData.sort((a, b) => b.createdAt - a.createdAt);
       setResults(resultsData);
     }, (error) => {
       console.error("Error fetching results:", error);
@@ -72,6 +77,19 @@ export default function Dashboard() {
       setTimetables(tData);
     });
 
+    const mq = query(
+      collection(db, 'messages'),
+      where('senderId', '==', user.uid)
+    );
+    const unsubscribeMessages = onSnapshot(mq, (snapshot) => {
+      const mData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as any as Message[];
+      mData.sort((a, b) => b.createdAt - a.createdAt);
+      setMessages(mData);
+    });
+
     // Rotate quotes
     const quoteInterval = setInterval(() => {
       const randomIndex = Math.floor(Math.random() * MEDICAL_QUOTES.length);
@@ -82,6 +100,7 @@ export default function Dashboard() {
       unsubscribe();
       unsubscribeAnnouncements();
       unsubscribeTimetables();
+      unsubscribeMessages();
       clearInterval(quoteInterval);
     };
   }, [user]);
@@ -158,6 +177,22 @@ export default function Dashboard() {
           >
             <Megaphone className="h-5 w-5" />
             <span>Announcements</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('messages')}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+              activeTab === 'messages' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'text-slate-600 hover:bg-slate-50 hover:text-blue-600'
+            }`}
+          >
+            <div className="flex items-center space-x-3">
+              <MessageSquare className="h-5 w-5" />
+              <span>Messages</span>
+            </div>
+            {messages.filter(m => m.reply && !m.isRead).length > 0 && (
+              <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+                {messages.filter(m => m.reply && !m.isRead).length}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab('settings')}
@@ -395,7 +430,7 @@ export default function Dashboard() {
                         </div>
                       </div>
                       <a 
-                        href={tt.url} 
+                        href={tt.fileUrl} 
                         target="_blank" 
                         rel="noreferrer"
                         className="p-2 bg-white border border-slate-200 rounded-lg text-blue-600 hover:bg-blue-50 transition-all"
@@ -497,6 +532,104 @@ export default function Dashboard() {
                   <button className="text-red-600 font-bold text-sm hover:underline">
                     Delete Account
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {activeTab === 'messages' && (
+            <div className="max-w-3xl space-y-8">
+              <div className="bg-white p-10 rounded-3xl border border-slate-100 shadow-sm space-y-8">
+                <div>
+                  <h3 className="text-2xl font-bold text-slate-900">Send a Message</h3>
+                  <p className="text-slate-500 text-sm mt-1">Contact the administration for any inquiries.</p>
+                </div>
+
+                <form 
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!messageForm.subject || !messageForm.content) return;
+                    
+                    try {
+                      await addDoc(collection(db, 'messages'), {
+                        senderId: user.uid,
+                        senderName: user.name,
+                        subject: messageForm.subject,
+                        content: messageForm.content,
+                        createdAt: Date.now(),
+                        isRead: false
+                      });
+                      setMessageForm({ subject: '', content: '' });
+                      setFormStatus({ type: 'success', text: 'Message sent successfully!' });
+                      setTimeout(() => setFormStatus({ type: '', text: '' }), 3000);
+                    } catch (err) {
+                      console.error('Error sending message:', err);
+                      setFormStatus({ type: 'error', text: 'Failed to send message.' });
+                    }
+                  }}
+                  className="space-y-6"
+                >
+                  {formStatus.text && (
+                    <div className={`p-4 rounded-xl text-sm font-bold ${formStatus.type === 'error' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                      {formStatus.text}
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Subject</label>
+                    <input
+                      type="text"
+                      required
+                      value={messageForm.subject}
+                      onChange={e => setMessageForm({...messageForm, subject: e.target.value})}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                      placeholder="e.g., Question about fees"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Message</label>
+                    <textarea
+                      required
+                      value={messageForm.content}
+                      onChange={e => setMessageForm({...messageForm, content: e.target.value})}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                      rows={4}
+                      placeholder="Write your message here..."
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <button 
+                      type="submit"
+                      className="bg-blue-600 text-white hover:bg-blue-700 px-8 py-3 rounded-xl text-sm font-bold transition-all shadow-sm"
+                    >
+                      Send Message
+                    </button>
+                  </div>
+                </form>
+
+                <div className="pt-8 border-t border-slate-100">
+                  <h4 className="font-bold text-slate-900 mb-6">Your Messages</h4>
+                  <div className="space-y-6">
+                    {messages.map(msg => (
+                      <div key={msg.id} className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                        <div className="flex justify-between items-start mb-2">
+                          <h5 className="font-bold text-slate-900">{msg.subject}</h5>
+                          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                            {new Date(msg.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className="text-slate-600 text-sm mb-4">{msg.content}</p>
+                        
+                        {msg.reply && (
+                          <div className="bg-white p-4 rounded-xl border border-slate-200 mt-4">
+                            <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-1">Admin Reply</p>
+                            <p className="text-slate-700 text-sm">{msg.reply}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {messages.length === 0 && (
+                      <div className="text-center text-slate-500 py-8">No messages sent yet.</div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

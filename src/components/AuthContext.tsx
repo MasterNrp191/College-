@@ -140,13 +140,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       registrationNumber: isStaff ? 'STAFF' : regNumber,
       program: isStaff ? 'Staff' : program as any,
       role: role as any,
-      approved: role !== 'student', // Staff/Admin are auto-approved for now, or admin can manage
+      approved: isAdminEmail, // Admin is auto-approved, others wait for approval
       createdAt: Date.now()
     };
 
     await setDoc(doc(db, 'users', firebaseUser.uid), studentData);
     
-    if (role === 'student') {
+    if (!isAdminEmail) {
       await signOut(auth);
       throw new Error('Registration successful! Please wait for admin approval before logging in.');
     }

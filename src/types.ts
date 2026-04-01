@@ -1,4 +1,15 @@
-export type UserRole = 'student' | 'admin' | 'editor' | 'bursar';
+export type UserRole = 'student' | 'admin' | 'editor' | 'bursar' | 'lecturer' | 'registrar' | 'other';
+
+export interface Message {
+  id?: string;
+  senderId: string;
+  senderName: string;
+  subject: string;
+  content: string;
+  reply?: string;
+  isRead: boolean;
+  createdAt: number;
+}
 
 export interface Timetable {
   id: string;

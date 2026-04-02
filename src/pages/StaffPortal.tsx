@@ -9,7 +9,7 @@ export default function StaffPortal() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [role, setRole] = useState('editor');
+  const [role, setRole] = useState('lecturer');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   
@@ -132,9 +132,9 @@ export default function StaffPortal() {
                   className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all appearance-none"
                 >
                   <option value="lecturer">Lecturer</option>
-                  <option value="editor">Editor</option>
                   <option value="bursar">Bursar</option>
                   <option value="registrar">Registrar</option>
+                  <option value="admin">Administrator</option>
                   <option value="other">Other</option>
                 </select>
               </div>

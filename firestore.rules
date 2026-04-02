@@ -59,6 +59,14 @@ service cloud.firestore {
     //   - date: number (required)
     //   - createdAt: number (required)
     //
+    // Collection: student_files
+    // Document ID: {fileId} (Auto-generated)
+    // Fields:
+    //   - studentUid: string (required)
+    //   - fileName: string (required)
+    //   - fileUrl: string (required)
+    //   - createdAt: number (required)
+    //
     // ===============================================================
 
     // ===============================================================
@@ -142,11 +150,20 @@ service cloud.firestore {
     }
 
     function isValidAnnouncement(data) {
-      return data.keys().hasOnly(['title', 'content', 'category', 'date', 'createdAt']) &&
+      return data.keys().hasOnly(['title', 'content', 'category', 'date', 'fileUrl', 'createdAt']) &&
              data.title is string &&
              data.content is string &&
              data.category is string &&
+             (!('fileUrl' in data) || data.fileUrl is string) &&
              data.date is number &&
+             data.createdAt is number;
+    }
+
+    function isValidStudentFile(data) {
+      return data.keys().hasOnly(['studentUid', 'fileName', 'fileUrl', 'createdAt']) &&
+             data.studentUid is string &&
+             data.fileName is string &&
+             data.fileUrl is string &&
              data.createdAt is number;
     }
 
@@ -189,6 +206,13 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isStaff() && !isBursar() && isValidAnnouncement(request.resource.data);
       allow update: if isStaff() && !isBursar() && isValidAnnouncement(request.resource.data);
+      allow delete: if isStaff() && !isBursar();
+    }
+
+    match /student_files/{fileId} {
+      allow read: if isAuthenticated() && (isApproved() && request.auth.uid == resource.data.studentUid || isStaff());
+      allow create: if isStaff() && !isBursar() && isValidStudentFile(request.resource.data);
+      allow update: if isStaff() && !isBursar() && isValidStudentFile(request.resource.data);
       allow delete: if isStaff() && !isBursar();
     }
 

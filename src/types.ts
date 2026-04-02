@@ -49,7 +49,8 @@ export interface Announcement {
   id: string;
   title: string;
   content: string;
-  type: 'exam' | 'notice' | 'event';
+  category: 'exam' | 'notice' | 'event';
+  fileUrl?: string;
   createdAt: number;
 }
 

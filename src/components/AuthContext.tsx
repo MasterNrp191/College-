@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     if (userDoc.exists()) {
       const userData = userDoc.data() as Student;
-      if (!userData.approved && userData.role === 'student') {
+      if (!userData.approved) {
         await signOut(auth);
         throw new Error('Your account is pending approval by the administrator.');
       }

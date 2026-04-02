@@ -33,6 +33,7 @@ export default function Dashboard() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [timetables, setTimetables] = useState<any[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [studentFiles, setStudentFiles] = useState<any[]>([]);
   const [currentQuote, setCurrentQuote] = useState(MEDICAL_QUOTES[0]);
   const [messageForm, setMessageForm] = useState({ subject: '', content: '' });
   const [formStatus, setFormStatus] = useState({ type: '', text: '' });
@@ -57,6 +58,19 @@ export default function Dashboard() {
       setResults(resultsData);
     }, (error) => {
       console.error("Error fetching results:", error);
+    });
+
+    const fq = query(
+      collection(db, 'student_files'),
+      where('studentUid', '==', user.uid)
+    );
+    const unsubscribeFiles = onSnapshot(fq, (snapshot) => {
+      const filesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      filesData.sort((a: any, b: any) => b.createdAt - a.createdAt);
+      setStudentFiles(filesData);
     });
 
     const aq = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'), limit(5));
@@ -98,6 +112,7 @@ export default function Dashboard() {
 
     return () => {
       unsubscribe();
+      unsubscribeFiles();
       unsubscribeAnnouncements();
       unsubscribeTimetables();
       unsubscribeMessages();
@@ -168,6 +183,15 @@ export default function Dashboard() {
           >
             <User className="h-5 w-5" />
             <span>My Profile</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('files')}
+            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+              activeTab === 'files' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'text-slate-600 hover:bg-slate-50 hover:text-blue-600'
+            }`}
+          >
+            <FileText className="h-5 w-5" />
+            <span>My Files</span>
           </button>
           <button
             onClick={() => setActiveTab('announcements')}
@@ -378,6 +402,62 @@ export default function Dashboard() {
             </div>
           )}
 
+          {activeTab === 'files' && (
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="p-8 border-b border-slate-50 flex justify-between items-center">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">My Files</h3>
+                  <p className="text-slate-500 text-sm mt-1">Documents and files uploaded by administrators.</p>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-widest">
+                    <tr>
+                      <th className="px-8 py-4">File Name</th>
+                      <th className="px-8 py-4">Date Uploaded</th>
+                      <th className="px-8 py-4 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {studentFiles.map((file, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-8 py-5 font-semibold text-slate-700 flex items-center space-x-3">
+                          <FileText className="h-5 w-5 text-blue-500" />
+                          <span>{file.fileName}</span>
+                        </td>
+                        <td className="px-8 py-5 text-slate-500 text-sm">{new Date(file.createdAt).toLocaleDateString()}</td>
+                        <td className="px-8 py-5 text-right">
+                          <a 
+                            href={file.fileUrl} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="inline-flex items-center space-x-1 text-blue-600 hover:text-blue-800 font-bold text-sm bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            <Download className="h-4 w-4" />
+                            <span>Download</span>
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                    {studentFiles.length === 0 && (
+                      <tr>
+                        <td colSpan={3} className="px-8 py-12 text-center text-slate-500">
+                          <div className="flex flex-col items-center justify-center space-y-3">
+                            <div className="bg-slate-100 p-4 rounded-full">
+                              <FileText className="h-8 w-8 text-slate-400" />
+                            </div>
+                            <p>No files have been uploaded to your profile yet.</p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'announcements' && (
             <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
               <div className="p-8 border-b border-slate-50">
@@ -403,6 +483,11 @@ export default function Dashboard() {
                       </div>
                       <h4 className="text-xl font-bold text-slate-900 mb-2">{ann.title}</h4>
                       <p className="text-slate-600 leading-relaxed">{ann.content}</p>
+                      {ann.fileUrl && (
+                        <a href={ann.fileUrl} target="_blank" rel="noreferrer" className="text-blue-600 text-xs font-bold mt-3 inline-block hover:underline">
+                          View Attached File
+                        </a>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -537,13 +622,55 @@ export default function Dashboard() {
             </div>
           )}
           {activeTab === 'messages' && (
-            <div className="max-w-3xl space-y-8">
-              <div className="bg-white p-10 rounded-3xl border border-slate-100 shadow-sm space-y-8">
-                <div>
-                  <h3 className="text-2xl font-bold text-slate-900">Send a Message</h3>
-                  <p className="text-slate-500 text-sm mt-1">Contact the administration for any inquiries.</p>
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col h-[800px]">
+              <div className="p-6 border-b border-slate-100 bg-white flex items-center space-x-4 z-10 shadow-sm">
+                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">
+                  A
                 </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">Administration</h3>
+                  <p className="text-slate-500 text-sm">Usually replies within 24 hours</p>
+                </div>
+              </div>
 
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50 flex flex-col-reverse">
+                <div className="space-y-6">
+                  {messages.length === 0 && (
+                    <div className="text-center text-slate-500 py-8">No messages sent yet. Start a conversation below.</div>
+                  )}
+                  {messages.slice().reverse().map(msg => (
+                    <div key={msg.id} className="space-y-4">
+                      {/* Student Message */}
+                      <div className="flex items-start space-x-3 justify-end">
+                        <div className="bg-blue-600 text-white p-4 rounded-2xl rounded-tr-none shadow-sm max-w-[80%]">
+                          <h5 className="font-bold text-blue-100 text-xs mb-1">{msg.subject}</h5>
+                          <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                          <div className="text-[10px] text-blue-200 mt-2 text-right">
+                            {new Date(msg.createdAt).toLocaleString()}
+                          </div>
+                        </div>
+                        <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-white font-bold text-xs flex-shrink-0 mt-1">
+                          {user.name.charAt(0).toUpperCase()}
+                        </div>
+                      </div>
+
+                      {/* Admin Reply */}
+                      {msg.reply && (
+                        <div className="flex items-start space-x-3">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs flex-shrink-0 mt-1">
+                            A
+                          </div>
+                          <div className="bg-white border border-slate-100 p-4 rounded-2xl rounded-tl-none shadow-sm max-w-[80%]">
+                            <p className="text-slate-700 text-sm whitespace-pre-wrap">{msg.reply}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-slate-100 bg-white">
                 <form 
                   onSubmit={async (e) => {
                     e.preventDefault();
@@ -559,78 +686,37 @@ export default function Dashboard() {
                         isRead: false
                       });
                       setMessageForm({ subject: '', content: '' });
-                      setFormStatus({ type: 'success', text: 'Message sent successfully!' });
-                      setTimeout(() => setFormStatus({ type: '', text: '' }), 3000);
                     } catch (err) {
                       console.error('Error sending message:', err);
-                      setFormStatus({ type: 'error', text: 'Failed to send message.' });
                     }
                   }}
-                  className="space-y-6"
+                  className="space-y-4"
                 >
-                  {formStatus.text && (
-                    <div className={`p-4 rounded-xl text-sm font-bold ${formStatus.type === 'error' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
-                      {formStatus.text}
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Subject</label>
-                    <input
-                      type="text"
-                      required
-                      value={messageForm.subject}
-                      onChange={e => setMessageForm({...messageForm, subject: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
-                      placeholder="e.g., Question about fees"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Message</label>
+                  <input
+                    type="text"
+                    required
+                    value={messageForm.subject}
+                    onChange={e => setMessageForm({...messageForm, subject: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                    placeholder="Subject (e.g., Question about fees)"
+                  />
+                  <div className="flex space-x-4">
                     <textarea
                       required
                       value={messageForm.content}
                       onChange={e => setMessageForm({...messageForm, content: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
-                      rows={4}
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all resize-none"
+                      rows={2}
                       placeholder="Write your message here..."
                     />
-                  </div>
-                  <div className="flex justify-end">
                     <button 
                       type="submit"
-                      className="bg-blue-600 text-white hover:bg-blue-700 px-8 py-3 rounded-xl text-sm font-bold transition-all shadow-sm"
+                      className="bg-blue-600 text-white hover:bg-blue-700 px-6 rounded-xl text-sm font-bold transition-all shadow-sm flex-shrink-0"
                     >
-                      Send Message
+                      Send
                     </button>
                   </div>
                 </form>
-
-                <div className="pt-8 border-t border-slate-100">
-                  <h4 className="font-bold text-slate-900 mb-6">Your Messages</h4>
-                  <div className="space-y-6">
-                    {messages.map(msg => (
-                      <div key={msg.id} className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
-                        <div className="flex justify-between items-start mb-2">
-                          <h5 className="font-bold text-slate-900">{msg.subject}</h5>
-                          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                            {new Date(msg.createdAt).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <p className="text-slate-600 text-sm mb-4">{msg.content}</p>
-                        
-                        {msg.reply && (
-                          <div className="bg-white p-4 rounded-xl border border-slate-200 mt-4">
-                            <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-1">Admin Reply</p>
-                            <p className="text-slate-700 text-sm">{msg.reply}</p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    {messages.length === 0 && (
-                      <div className="text-center text-slate-500 py-8">No messages sent yet.</div>
-                    )}
-                  </div>
-                </div>
               </div>
             </div>
           )}

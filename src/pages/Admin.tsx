@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, FormEvent, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, 
@@ -63,6 +63,21 @@ export default function Admin() {
     program: 'Clinical Medicine' as const
   });
 
+  // Approval Modals
+  const [approvalUser, setApprovalUser] = useState<Student | null>(null);
+  const [rejectUser, setRejectUser] = useState<Student | null>(null);
+  const [approvalRole, setApprovalRole] = useState<UserRole>('student');
+
+  // Edit Announcement State
+  const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
+
+  // Upload File to Student State
+  const [uploadFileModalUser, setUploadFileModalUser] = useState<Student | null>(null);
+  const [studentFileForm, setStudentFileForm] = useState({
+    fileName: '',
+    fileUrl: ''
+  });
+
   const { logout, isAdmin, isEditor, isBursar } = useAuth();
   const navigate = useNavigate();
 
@@ -79,7 +94,8 @@ export default function Admin() {
   const [announcementForm, setAnnouncementForm] = useState({
     title: '',
     content: '',
-    category: 'notice' as const
+    category: 'notice' as const,
+    fileUrl: ''
   });
 
   const [timetableForm, setTimetableForm] = useState({
@@ -88,6 +104,7 @@ export default function Admin() {
     semester: 'Semester 1',
     fileUrl: ''
   });
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
@@ -152,25 +169,49 @@ export default function Admin() {
     navigate('/portal');
   };
 
-  const handleApprove = async (userId: string) => {
+  const handleApprove = async () => {
+    if (!approvalUser) return;
     try {
-      await updateDoc(doc(db, 'users', userId), { approved: true });
+      await updateDoc(doc(db, 'users', approvalUser.id!), { 
+        approved: true,
+        role: approvalRole
+      });
       setMessage({ type: 'success', text: 'Account approved successfully!' });
+      setApprovalUser(null);
     } catch (error) {
       console.error("Error approving account:", error);
       setMessage({ type: 'error', text: 'Failed to approve account.' });
     }
   };
 
-  const handleReject = async (userId: string) => {
-    if (window.confirm('Are you sure you want to reject and delete this registration?')) {
-      try {
-        await deleteDoc(doc(db, 'users', userId));
-        setMessage({ type: 'success', text: 'Registration rejected and removed.' });
-      } catch (error) {
-        console.error("Error rejecting account:", error);
-        setMessage({ type: 'error', text: 'Failed to reject account.' });
-      }
+  const handleReject = async () => {
+    if (!rejectUser) return;
+    try {
+      await deleteDoc(doc(db, 'users', rejectUser.id!));
+      setMessage({ type: 'success', text: 'Registration rejected and removed.' });
+      setRejectUser(null);
+    } catch (error) {
+      console.error("Error rejecting account:", error);
+      setMessage({ type: 'error', text: 'Failed to reject account.' });
+    }
+  };
+
+  const handleUploadStudentFile = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!uploadFileModalUser) return;
+    try {
+      await addDoc(collection(db, 'student_files'), {
+        studentUid: uploadFileModalUser.uid,
+        fileName: studentFileForm.fileName,
+        fileUrl: studentFileForm.fileUrl,
+        createdAt: Date.now()
+      });
+      setMessage({ type: 'success', text: 'File uploaded successfully!' });
+      setUploadFileModalUser(null);
+      setStudentFileForm({ fileName: '', fileUrl: '' });
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      setMessage({ type: 'error', text: 'Failed to upload file.' });
     }
   };
 
@@ -224,13 +265,21 @@ export default function Admin() {
   const handleAddAnnouncement = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      await addDoc(collection(db, 'announcements'), {
-        ...announcementForm,
-        date: Date.now(),
-        createdAt: Date.now()
-      });
-      setAnnouncementForm({ title: '', content: '', category: 'notice' });
-      setMessage({ type: 'success', text: 'Announcement posted!' });
+      if (editingAnnouncement) {
+        await updateDoc(doc(db, 'announcements', editingAnnouncement.id!), {
+          ...announcementForm
+        });
+        setMessage({ type: 'success', text: 'Announcement updated!' });
+        setEditingAnnouncement(null);
+      } else {
+        await addDoc(collection(db, 'announcements'), {
+          ...announcementForm,
+          date: Date.now(),
+          createdAt: Date.now()
+        });
+        setMessage({ type: 'success', text: 'Announcement posted!' });
+      }
+      setAnnouncementForm({ title: '', content: '', category: 'notice', fileUrl: '' });
     } catch (error) {
       console.error("Error posting announcement:", error);
       setMessage({ type: 'error', text: 'Failed to post announcement.' });
@@ -391,6 +440,26 @@ export default function Admin() {
   const staff = allUsers.filter(u => u.role !== 'student' && u.approved);
   const unreadMessages = messages.filter(m => !m.isRead);
 
+  const conversations = useMemo(() => {
+    const groups = new Map<string, { user: { id: string, name: string }, messages: Message[], unreadCount: number, lastMessageAt: number }>();
+    messages.forEach(msg => {
+      if (!groups.has(msg.senderId)) {
+        groups.set(msg.senderId, { user: { id: msg.senderId, name: msg.senderName }, messages: [], unreadCount: 0, lastMessageAt: 0 });
+      }
+      const group = groups.get(msg.senderId)!;
+      group.messages.push(msg);
+      if (!msg.isRead) {
+        group.unreadCount++;
+      }
+      if (msg.createdAt > group.lastMessageAt) {
+        group.lastMessageAt = msg.createdAt;
+      }
+    });
+    return Array.from(groups.values()).sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+  }, [messages]);
+
+  const selectedConversation = conversations.find(c => c.user.id === selectedUserId);
+
   const filteredList = (list: Student[]) => list.filter(s => 
     s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     s.registrationNumber.toLowerCase().includes(searchTerm.toLowerCase())
@@ -399,17 +468,17 @@ export default function Admin() {
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar */}
-      <aside className="w-64 bg-slate-900 border-r border-slate-800 hidden lg:flex flex-col sticky top-0 h-screen">
-        <div className="p-8 border-b border-slate-800">
+      <aside className="w-64 bg-gradient-to-b from-slate-900 to-slate-950 border-r border-slate-800 hidden lg:flex flex-col sticky top-0 h-screen shadow-2xl">
+        <div className="p-8 border-b border-slate-800/50">
           <div className="flex items-center space-x-3">
-            <div className="bg-blue-600 p-2 rounded-lg">
+            <div className="bg-gradient-to-br from-blue-500 to-blue-700 p-2.5 rounded-xl shadow-lg shadow-blue-900/50">
               <ShieldCheck className="h-6 w-6 text-white" />
             </div>
             <span className="text-xl font-bold text-white tracking-tight">Staff Panel</span>
           </div>
         </div>
 
-        <nav className="flex-grow p-6 space-y-2 overflow-y-auto">
+        <nav className="flex-grow p-6 space-y-2 overflow-y-auto custom-scrollbar">
           {[
             { id: 'overview', label: 'Overview', icon: LayoutDashboard },
             ...(isAdmin ? [
@@ -431,42 +500,44 @@ export default function Admin() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                activeTab === tab.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+              className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-sm font-bold transition-all duration-300 group ${
+                activeTab === tab.id 
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20 translate-x-1' 
+                  : 'text-slate-400 hover:bg-white/5 hover:text-white hover:translate-x-1'
               }`}
             >
               <div className="flex items-center space-x-3">
-                <tab.icon className="h-5 w-5" />
+                <tab.icon className={`h-5 w-5 transition-colors ${activeTab === tab.id ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'}`} />
                 <span>{tab.label}</span>
               </div>
               {tab.count !== undefined && tab.count > 0 && (
-                <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{tab.count}</span>
+                <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm">{tab.count}</span>
               )}
             </button>
           ))}
         </nav>
 
-        <div className="p-6 border-t border-slate-800">
+        <div className="p-6 border-t border-slate-800/50">
           <button 
             onClick={handleLogout}
-            className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-bold text-red-400 hover:bg-red-900/20 transition-all"
+            className="w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-sm font-bold text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all duration-300 group"
           >
-            <LogOut className="h-5 w-5" />
+            <LogOut className="h-5 w-5 transition-transform group-hover:-translate-x-1" />
             <span>Logout</span>
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-grow p-8 lg:p-12 overflow-y-auto">
+      <main className="flex-grow p-8 lg:p-12 overflow-y-auto bg-slate-50/50">
         {/* Header */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 space-y-4 md:space-y-0">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
-              {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center space-x-3">
+              <span>{activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}</span>
             </h1>
-            <p className="text-slate-500 font-medium mt-1">
-              {activeTab === 'overview' ? 'Welcome back, Administrator.' : `Manage ${activeTab} and system settings.`}
+            <p className="text-slate-500 font-medium mt-2 text-sm">
+              {activeTab === 'overview' ? 'Welcome back! Here is what is happening today.' : `Manage ${activeTab} and system settings.`}
             </p>
           </div>
           <div className="flex items-center space-x-4">
@@ -514,17 +585,23 @@ export default function Admin() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
               {[
                 { label: 'Total Students', value: students.length, icon: Users, color: 'blue' },
+                { label: 'Total Staff', value: staff.length, icon: ShieldCheck, color: 'green' },
                 { label: 'Pending Approvals', value: pending.length, icon: UserPlus, color: 'orange' },
-                { label: 'Staff/Editors', value: staff.length, icon: ShieldCheck, color: 'green' },
-                { label: 'Announcements', value: announcements.length, icon: Megaphone, color: 'purple' },
+                { label: 'New Messages', value: unreadMessages.length, icon: MessageSquare, color: 'purple' },
               ].map((stat, idx) => (
-                <div key={idx} className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-4">
-                  <div className={`bg-${stat.color}-50 w-12 h-12 rounded-xl flex items-center justify-center`}>
-                    <stat.icon className={`h-6 w-6 text-${stat.color}-600`} />
+                <motion.div 
+                  key={idx} 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.1 }}
+                  className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 space-y-4 group cursor-pointer"
+                >
+                  <div className={`bg-${stat.color}-50 w-14 h-14 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
+                    <stat.icon className={`h-7 w-7 text-${stat.color}-600`} />
                   </div>
                   <div className="text-sm font-bold text-slate-500 uppercase tracking-widest">{stat.label}</div>
-                  <div className="text-2xl font-bold text-slate-900">{stat.value}</div>
-                </div>
+                  <div className="text-4xl font-black text-slate-900 tracking-tight">{stat.value}</div>
+                </motion.div>
               ))}
             </div>
 
@@ -623,14 +700,17 @@ export default function Admin() {
                       <td className="px-8 py-5 text-right">
                         <div className="flex justify-end space-x-2">
                           <button 
-                            onClick={() => handleApprove(user.id!)}
+                            onClick={() => {
+                              setApprovalUser(user);
+                              setApprovalRole(user.role);
+                            }}
                             className="bg-green-600 text-white p-2 rounded-lg hover:bg-green-700 transition-colors shadow-sm"
                             title="Approve"
                           >
                             <UserCheck className="h-4 w-4" />
                           </button>
                           <button 
-                            onClick={() => handleReject(user.id!)}
+                            onClick={() => setRejectUser(user)}
                             className="bg-red-600 text-white p-2 rounded-lg hover:bg-red-700 transition-colors shadow-sm"
                             title="Reject"
                           >
@@ -681,9 +761,10 @@ export default function Admin() {
                       <td className="px-8 py-5 text-right">
                         {(isAdmin || isBursar) && (
                           <div className="flex justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => handleEditUser(user)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit className="h-4 w-4" /></button>
+                            <button onClick={() => setUploadFileModalUser(user)} className="p-2 text-slate-400 hover:text-green-600 transition-colors" title="Upload File"><Upload className="h-4 w-4" /></button>
+                            <button onClick={() => handleEditUser(user)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Edit Student"><Edit className="h-4 w-4" /></button>
                             {isAdmin && (
-                              <button onClick={() => handleDeleteUser(user.id!)} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 className="h-4 w-4" /></button>
+                              <button onClick={() => handleDeleteUser(user.id!)} className="p-2 text-slate-400 hover:text-red-600 transition-colors" title="Delete Student"><Trash2 className="h-4 w-4" /></button>
                             )}
                           </div>
                         )}
@@ -956,7 +1037,7 @@ export default function Admin() {
                   <Megaphone className="h-6 w-6" />
                 </div>
                 <div>
-                  <h3 className="text-2xl font-bold text-slate-900">Post Announcement</h3>
+                  <h3 className="text-2xl font-bold text-slate-900">{editingAnnouncement ? 'Edit Announcement' : 'Post Announcement'}</h3>
                   <p className="text-slate-500 text-sm">Share news, exam dates, or notices with students.</p>
                 </div>
               </div>
@@ -997,12 +1078,36 @@ export default function Admin() {
                     placeholder="Enter announcement details..." 
                   />
                 </div>
-                <button 
-                  type="submit"
-                  className="w-full bg-purple-600 text-white hover:bg-purple-700 px-8 py-4 rounded-xl text-lg font-bold transition-all shadow-lg shadow-purple-200 active:scale-95"
-                >
-                  Post Announcement
-                </button>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">File URL (Optional)</label>
+                  <input 
+                    type="url" 
+                    value={announcementForm.fileUrl}
+                    onChange={(e) => setAnnouncementForm({...announcementForm, fileUrl: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-purple-600 transition-all" 
+                    placeholder="https://example.com/document.pdf" 
+                  />
+                </div>
+                <div className="flex space-x-4">
+                  {editingAnnouncement && (
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setEditingAnnouncement(null);
+                        setAnnouncementForm({ title: '', content: '', category: 'notice' });
+                      }}
+                      className="flex-1 bg-slate-100 text-slate-600 hover:bg-slate-200 px-8 py-4 rounded-xl text-lg font-bold transition-all"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  <button 
+                    type="submit"
+                    className="flex-1 bg-purple-600 text-white hover:bg-purple-700 px-8 py-4 rounded-xl text-lg font-bold transition-all shadow-lg shadow-purple-200 active:scale-95"
+                  >
+                    {editingAnnouncement ? 'Save Changes' : 'Post Announcement'}
+                  </button>
+                </div>
               </form>
             </div>
 
@@ -1020,18 +1125,36 @@ export default function Admin() {
                       <div>
                         <h4 className="font-bold text-slate-900">{ann.title}</h4>
                         <p className="text-slate-500 text-sm mt-1">{ann.content}</p>
+                        {ann.fileUrl && (
+                          <a href={ann.fileUrl} target="_blank" rel="noreferrer" className="text-blue-600 text-xs font-bold mt-2 inline-block hover:underline">
+                            View Attached File
+                          </a>
+                        )}
                         <div className="flex items-center space-x-4 mt-3 text-xs font-bold text-slate-400 uppercase tracking-widest">
                           <span className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded">{ann.category}</span>
                           <span>{new Date(ann.createdAt).toLocaleDateString()}</span>
                         </div>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => handleDeleteAnnouncement(ann.id)}
-                      className="p-2 text-slate-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                        onClick={() => {
+                          setEditingAnnouncement(ann);
+                          setAnnouncementForm({ title: ann.title, content: ann.content, category: ann.category, fileUrl: ann.fileUrl || '' });
+                        }}
+                        className="p-2 text-slate-400 hover:text-blue-600 transition-colors"
+                        title="Edit Announcement"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteAnnouncement(ann.id)}
+                        className="p-2 text-slate-400 hover:text-red-600 transition-colors"
+                        title="Delete Announcement"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1039,72 +1162,139 @@ export default function Admin() {
           </div>
         )}
         {activeTab === 'messages' && (
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="p-8 border-b border-slate-50">
-              <h3 className="text-xl font-bold text-slate-900">Messages</h3>
-              <p className="text-slate-500 text-sm mt-1">View and reply to messages from students.</p>
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex h-[800px]">
+            {/* Conversations List */}
+            <div className="w-1/3 border-r border-slate-100 flex flex-col bg-slate-50/50">
+              <div className="p-6 border-b border-slate-100 bg-white">
+                <h3 className="text-xl font-bold text-slate-900">Messages</h3>
+                <p className="text-slate-500 text-sm mt-1">Chat with students and staff.</p>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {conversations.length === 0 ? (
+                  <div className="p-8 text-center text-slate-500 text-sm">No conversations yet.</div>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {conversations.map((conv) => (
+                      <button
+                        key={conv.user.id}
+                        onClick={() => setSelectedUserId(conv.user.id)}
+                        className={`w-full text-left p-4 flex items-center space-x-4 hover:bg-white transition-colors ${selectedUserId === conv.user.id ? 'bg-white border-l-4 border-blue-600' : 'border-l-4 border-transparent'}`}
+                      >
+                        <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-lg flex-shrink-0">
+                          {conv.user.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-baseline mb-1">
+                            <h4 className="font-bold text-slate-900 truncate">{conv.user.name}</h4>
+                            <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap ml-2">
+                              {new Date(conv.lastMessageAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <p className="text-sm text-slate-500 truncate">
+                            {conv.messages[conv.messages.length - 1].subject}
+                          </p>
+                        </div>
+                        {conv.unreadCount > 0 && (
+                          <div className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                            {conv.unreadCount}
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="divide-y divide-slate-50">
-              {messages.map((msg) => (
-                <div key={msg.id} className={`p-8 ${!msg.isRead ? 'bg-blue-50/50' : ''}`}>
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h4 className="font-bold text-slate-900">{msg.subject}</h4>
-                      <p className="text-sm text-slate-500">From: {msg.senderName}</p>
+
+            {/* Chat Area */}
+            <div className="flex-1 flex flex-col bg-white">
+              {selectedConversation ? (
+                <>
+                  <div className="p-6 border-b border-slate-100 flex items-center space-x-4 bg-white shadow-sm z-10">
+                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">
+                      {selectedConversation.user.name.charAt(0).toUpperCase()}
                     </div>
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                      {new Date(msg.createdAt).toLocaleDateString()}
+                    <div>
+                      <h3 className="font-bold text-slate-900">{selectedConversation.user.name}</h3>
+                      <p className="text-xs text-slate-500">Student</p>
                     </div>
                   </div>
-                  <p className="text-slate-700 mb-4">{msg.content}</p>
-                  
-                  {msg.reply ? (
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Your Reply</p>
-                      <p className="text-slate-700">{msg.reply}</p>
-                    </div>
-                  ) : (
-                    <form 
-                      onSubmit={async (e) => {
-                        e.preventDefault();
-                        const form = e.target as HTMLFormElement;
-                        const replyContent = (form.elements.namedItem('reply') as HTMLTextAreaElement).value;
-                        if (!replyContent) return;
-                        
-                        try {
-                          await updateDoc(doc(db, 'messages', msg.id!), {
-                            reply: replyContent,
-                            isRead: true
-                          });
-                          setMessage({ type: 'success', text: 'Reply sent successfully!' });
-                        } catch (err) {
-                          console.error('Error replying:', err);
-                          setMessage({ type: 'error', text: 'Failed to send reply.' });
-                        }
-                      }}
-                      className="mt-4 space-y-4"
-                    >
-                      <textarea
-                        name="reply"
-                        required
-                        placeholder="Write your reply..."
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
-                        rows={3}
-                      />
-                      <div className="flex justify-end">
-                        <button 
-                          type="submit"
-                          className="bg-blue-600 text-white hover:bg-blue-700 px-6 py-2 rounded-xl text-sm font-bold transition-all shadow-sm"
-                        >
-                          Send Reply
-                        </button>
+                  <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
+                    {selectedConversation.messages.map((msg) => (
+                      <div key={msg.id} className="space-y-4">
+                        {/* User Message */}
+                        <div className="flex items-start space-x-3">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs flex-shrink-0 mt-1">
+                            {selectedConversation.user.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="bg-white border border-slate-100 p-4 rounded-2xl rounded-tl-none shadow-sm max-w-[80%]">
+                            <h5 className="font-bold text-slate-900 text-sm mb-1">{msg.subject}</h5>
+                            <p className="text-slate-700 text-sm whitespace-pre-wrap">{msg.content}</p>
+                            <div className="text-[10px] text-slate-400 mt-2 text-right">
+                              {new Date(msg.createdAt).toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Admin Reply */}
+                        {msg.reply ? (
+                          <div className="flex items-start space-x-3 justify-end">
+                            <div className="bg-blue-600 text-white p-4 rounded-2xl rounded-tr-none shadow-sm max-w-[80%]">
+                              <p className="text-sm whitespace-pre-wrap">{msg.reply}</p>
+                            </div>
+                            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-white font-bold text-xs flex-shrink-0 mt-1">
+                              A
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex justify-end pl-12">
+                            <form 
+                              onSubmit={async (e) => {
+                                e.preventDefault();
+                                const form = e.target as HTMLFormElement;
+                                const replyContent = (form.elements.namedItem('reply') as HTMLTextAreaElement).value;
+                                if (!replyContent) return;
+                                
+                                try {
+                                  await updateDoc(doc(db, 'messages', msg.id!), {
+                                    reply: replyContent,
+                                    isRead: true
+                                  });
+                                  form.reset();
+                                } catch (err) {
+                                  console.error('Error replying:', err);
+                                  setMessage({ type: 'error', text: 'Failed to send reply.' });
+                                }
+                              }}
+                              className="w-full max-w-[80%] bg-white border border-slate-200 rounded-2xl p-3 shadow-sm"
+                            >
+                              <textarea
+                                name="reply"
+                                required
+                                placeholder={`Reply to "${msg.subject}"...`}
+                                className="w-full bg-transparent text-sm focus:outline-none resize-none"
+                                rows={2}
+                              />
+                              <div className="flex justify-end mt-2">
+                                <button 
+                                  type="submit"
+                                  className="bg-slate-900 text-white hover:bg-slate-800 px-4 py-1.5 rounded-lg text-xs font-bold transition-all"
+                                >
+                                  Send Reply
+                                </button>
+                              </div>
+                            </form>
+                          </div>
+                        )}
                       </div>
-                    </form>
-                  )}
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+                  <MessageSquare className="h-16 w-16 mb-4 opacity-20" />
+                  <p>Select a conversation to start messaging</p>
                 </div>
-              ))}
-              {messages.length === 0 && (
-                <div className="p-12 text-center text-slate-500">No messages found.</div>
               )}
             </div>
           </div>
@@ -1307,6 +1497,173 @@ export default function Admin() {
                   >
                     <Save className="h-4 w-4" />
                     <span>Save Changes</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Approve Modal */}
+      <AnimatePresence>
+        {approvalUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
+            >
+              <div className="p-8 border-b border-slate-50 flex justify-between items-center">
+                <h3 className="text-2xl font-bold text-slate-900">Approve Account</h3>
+                <button onClick={() => setApprovalUser(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                  <X className="h-6 w-6 text-slate-400" />
+                </button>
+              </div>
+              <div className="p-8 space-y-6">
+                <p className="text-slate-600">
+                  Are you sure you want to approve the account for <strong>{approvalUser.name}</strong>?
+                </p>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Assign Role</label>
+                  <select 
+                    value={approvalRole}
+                    onChange={(e) => setApprovalRole(e.target.value as UserRole)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                  >
+                    <option value="student">Student</option>
+                    <option value="lecturer">Lecturer</option>
+                    <option value="bursar">Bursar</option>
+                    <option value="registrar">Registrar</option>
+                    <option value="admin">Administrator</option>
+                    <option value="editor">Editor</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div className="pt-4 flex space-x-4">
+                  <button 
+                    type="button"
+                    onClick={() => setApprovalUser(null)}
+                    className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleApprove}
+                    className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-white bg-green-600 hover:bg-green-700 transition-all shadow-lg shadow-green-200 flex items-center justify-center space-x-2"
+                  >
+                    <UserCheck className="h-5 w-5" />
+                    <span>Approve</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Reject Modal */}
+      <AnimatePresence>
+        {rejectUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
+            >
+              <div className="p-8 border-b border-slate-50 flex justify-between items-center">
+                <h3 className="text-2xl font-bold text-slate-900">Reject Account</h3>
+                <button onClick={() => setRejectUser(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                  <X className="h-6 w-6 text-slate-400" />
+                </button>
+              </div>
+              <div className="p-8 space-y-6">
+                <div className="bg-red-50 text-red-600 p-4 rounded-xl flex items-start space-x-3">
+                  <AlertCircle className="h-6 w-6 shrink-0" />
+                  <p className="text-sm font-medium">
+                    Are you sure you want to reject and delete the registration for <strong>{rejectUser.name}</strong>? This action cannot be undone.
+                  </p>
+                </div>
+                <div className="pt-4 flex space-x-4">
+                  <button 
+                    type="button"
+                    onClick={() => setRejectUser(null)}
+                    className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleReject}
+                    className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-white bg-red-600 hover:bg-red-700 transition-all shadow-lg shadow-red-200 flex items-center justify-center space-x-2"
+                  >
+                    <UserX className="h-5 w-5" />
+                    <span>Reject & Delete</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Upload File Modal */}
+      <AnimatePresence>
+        {uploadFileModalUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
+            >
+              <div className="p-8 border-b border-slate-50 flex justify-between items-center">
+                <h3 className="text-2xl font-bold text-slate-900">Upload File</h3>
+                <button onClick={() => setUploadFileModalUser(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                  <X className="h-6 w-6 text-slate-400" />
+                </button>
+              </div>
+              <form onSubmit={handleUploadStudentFile} className="p-8 space-y-6">
+                <p className="text-slate-600 text-sm">
+                  Upload a file to <strong>{uploadFileModalUser.name}</strong>'s profile.
+                </p>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">File Name / Description</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={studentFileForm.fileName}
+                    onChange={(e) => setStudentFileForm({...studentFileForm, fileName: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                    placeholder="e.g. Medical Certificate"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">File URL</label>
+                  <input 
+                    type="url" 
+                    required
+                    value={studentFileForm.fileUrl}
+                    onChange={(e) => setStudentFileForm({...studentFileForm, fileUrl: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                    placeholder="https://example.com/file.pdf"
+                  />
+                </div>
+                <div className="pt-4 flex space-x-4">
+                  <button 
+                    type="button"
+                    onClick={() => setUploadFileModalUser(null)}
+                    className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit"
+                    className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 flex items-center justify-center space-x-2"
+                  >
+                    <Upload className="h-5 w-5" />
+                    <span>Upload</span>
                   </button>
                 </div>
               </form>

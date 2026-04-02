@@ -121,6 +121,7 @@ service cloud.firestore {
     function isValidMessage(data) {
       return data.keys().hasAll(['senderId', 'senderName', 'subject', 'content', 'isRead', 'createdAt']) &&
              (!('reply' in data) || data.reply is string) &&
+             (!('repliedAt' in data) || data.repliedAt is number) &&
              data.senderId is string &&
              data.senderName is string &&
              data.subject is string &&

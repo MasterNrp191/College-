@@ -7,6 +7,7 @@ export interface Message {
   subject: string;
   content: string;
   reply?: string;
+  repliedAt?: number;
   isRead: boolean;
   createdAt: number;
 }

@@ -662,6 +662,11 @@ export default function Dashboard() {
                           </div>
                           <div className="bg-white border border-slate-100 p-4 rounded-2xl rounded-tl-none shadow-sm max-w-[80%]">
                             <p className="text-slate-700 text-sm whitespace-pre-wrap">{msg.reply}</p>
+                            {msg.repliedAt && (
+                              <div className="text-[10px] text-slate-400 mt-2 text-left">
+                                {new Date(msg.repliedAt).toLocaleString()}
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}

@@ -28,7 +28,9 @@ import {
   Clock,
   MessageSquare,
   Menu,
-  Settings
+  Settings,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, orderBy, serverTimestamp } from 'firebase/firestore';
@@ -40,6 +42,13 @@ import { MEDICAL_QUOTES } from '@/constants/quotes';
 export default function Admin() {
   const [activeTab, setActiveTab] = useState('overview');
   const [searchTerm, setSearchTerm] = useState('');
+  const [tableSearch, setTableSearch] = useState({
+    approvals: '',
+    students: '',
+    staff: '',
+    announcements: '',
+    timetables: ''
+  });
   const [allUsers, setAllUsers] = useState<Student[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [timetables, setTimetables] = useState<any[]>([]);
@@ -50,6 +59,26 @@ export default function Admin() {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [currentQuote, setCurrentQuote] = useState(MEDICAL_QUOTES[0]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
+
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const sortData = <T extends Record<string, any>>(data: T[]): T[] => {
+    if (!sortConfig) return data;
+    return [...data].sort((a, b) => {
+      const valA = a[sortConfig.key] || '';
+      const valB = b[sortConfig.key] || '';
+      if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
   
   // Edit Modal State
   const [editingUser, setEditingUser] = useState<Student | null>(null);
@@ -172,7 +201,7 @@ export default function Admin() {
   const handleApprove = async () => {
     if (!approvalUser) return;
     try {
-      await updateDoc(doc(db, 'users', approvalUser.id!), { 
+      await updateDoc(doc(db, 'users', approvalUser.uid || approvalUser.id!), { 
         approved: true,
         role: approvalRole
       });
@@ -187,7 +216,7 @@ export default function Admin() {
   const handleReject = async () => {
     if (!rejectUser) return;
     try {
-      await deleteDoc(doc(db, 'users', rejectUser.id!));
+      await deleteDoc(doc(db, 'users', rejectUser.uid || rejectUser.id!));
       setMessage({ type: 'success', text: 'Registration rejected and removed.' });
       setRejectUser(null);
     } catch (error) {
@@ -460,10 +489,51 @@ export default function Admin() {
 
   const selectedConversation = conversations.find(c => c.user.id === selectedUserId);
 
-  const filteredList = (list: Student[]) => list.filter(s => 
-    s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.registrationNumber.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const getFilteredAndSortedUsers = (list: Student[], tabKey: keyof typeof tableSearch) => {
+    let filtered = list.filter(s => 
+      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (s.registrationNumber && s.registrationNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (s.email && s.email.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+    
+    if (tableSearch[tabKey]) {
+      const term = tableSearch[tabKey].toLowerCase();
+      filtered = filtered.filter(s => 
+        s.name.toLowerCase().includes(term) ||
+        (s.registrationNumber && s.registrationNumber.toLowerCase().includes(term)) ||
+        (s.email && s.email.toLowerCase().includes(term)) ||
+        (s.program && s.program.toLowerCase().includes(term))
+      );
+    }
+    
+    return sortData(filtered);
+  };
+
+  const getFilteredAndSortedAnnouncements = () => {
+    let filtered = announcements;
+    if (tableSearch.announcements) {
+      const term = tableSearch.announcements.toLowerCase();
+      filtered = filtered.filter(a => 
+        a.title.toLowerCase().includes(term) ||
+        a.content.toLowerCase().includes(term) ||
+        a.category.toLowerCase().includes(term)
+      );
+    }
+    return sortData(filtered);
+  };
+
+  const getFilteredAndSortedTimetables = () => {
+    let filtered = timetables;
+    if (tableSearch.timetables) {
+      const term = tableSearch.timetables.toLowerCase();
+      filtered = filtered.filter(t => 
+        t.program.toLowerCase().includes(term) ||
+        t.year.toLowerCase().includes(term) ||
+        t.semester.toLowerCase().includes(term)
+      );
+    }
+    return sortData(filtered);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -584,16 +654,17 @@ export default function Admin() {
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
               {[
-                { label: 'Total Students', value: students.length, icon: Users, color: 'blue' },
-                { label: 'Total Staff', value: staff.length, icon: ShieldCheck, color: 'green' },
-                { label: 'Pending Approvals', value: pending.length, icon: UserPlus, color: 'orange' },
-                { label: 'New Messages', value: unreadMessages.length, icon: MessageSquare, color: 'purple' },
+                { label: 'Total Students', value: students.length, icon: Users, color: 'blue', tab: 'students' },
+                { label: 'Total Staff', value: staff.length, icon: ShieldCheck, color: 'green', tab: 'staff' },
+                { label: 'Pending Approvals', value: pending.length, icon: UserPlus, color: 'orange', tab: 'approvals' },
+                { label: 'New Messages', value: unreadMessages.length, icon: MessageSquare, color: 'purple', tab: 'messages' },
               ].map((stat, idx) => (
                 <motion.div 
                   key={idx} 
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.1 }}
+                  onClick={() => setActiveTab(stat.tab)}
                   className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 space-y-4 group cursor-pointer"
                 >
                   <div className={`bg-${stat.color}-50 w-14 h-14 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
@@ -669,25 +740,57 @@ export default function Admin() {
 
         {activeTab === 'approvals' && (
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="p-8 border-b border-slate-50">
-              <h3 className="text-xl font-bold text-slate-900">Pending Registrations</h3>
-              <p className="text-slate-500 text-sm mt-1">Review and approve new student and staff accounts.</p>
+            <div className="p-8 border-b border-slate-50 flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Pending Registrations</h3>
+                <p className="text-slate-500 text-sm mt-1">Review and approve new student and staff accounts.</p>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Filter pending..."
+                  value={tableSearch.approvals}
+                  onChange={(e) => setTableSearch({...tableSearch, approvals: e.target.value})}
+                  className="bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all w-64"
+                />
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-widest">
                   <tr>
-                    <th className="px-8 py-4">Name</th>
-                    <th className="px-8 py-4">Reg Number / Email</th>
-                    <th className="px-8 py-4">Role / Program</th>
-                    <th className="px-8 py-4">Date</th>
+                    <th className="px-8 py-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('name')}>
+                      <div className="flex items-center space-x-1">
+                        <span>Name</span>
+                        {sortConfig?.key === 'name' && (sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />)}
+                      </div>
+                    </th>
+                    <th className="px-8 py-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('email')}>
+                      <div className="flex items-center space-x-1">
+                        <span>Reg Number / Email</span>
+                        {sortConfig?.key === 'email' && (sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />)}
+                      </div>
+                    </th>
+                    <th className="px-8 py-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('role')}>
+                      <div className="flex items-center space-x-1">
+                        <span>Role / Program</span>
+                        {sortConfig?.key === 'role' && (sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />)}
+                      </div>
+                    </th>
+                    <th className="px-8 py-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('createdAt')}>
+                      <div className="flex items-center space-x-1">
+                        <span>Date</span>
+                        {sortConfig?.key === 'createdAt' && (sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />)}
+                      </div>
+                    </th>
                     <th className="px-8 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {filteredList(pending).map((user, idx) => (
+                  {getFilteredAndSortedUsers(pending, 'approvals').map((user, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-8 py-5 font-semibold text-slate-700">{user.name}</td>
+                      <td className="px-8 py-5 font-semibold text-slate-700">{user.name || 'Unknown User'}</td>
                       <td className="px-8 py-5 text-slate-500 font-mono text-sm">
                         {user.role === 'student' ? user.registrationNumber : user.email}
                       </td>
@@ -720,7 +823,7 @@ export default function Admin() {
                       </td>
                     </tr>
                   ))}
-                  {filteredList(pending).length === 0 && (
+                  {getFilteredAndSortedUsers(pending, 'approvals').length === 0 && (
                     <tr>
                       <td colSpan={5} className="px-8 py-12 text-center text-slate-500">No pending approvals.</td>
                     </tr>
@@ -733,26 +836,58 @@ export default function Admin() {
 
         {activeTab === 'students' && (
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="p-8 border-b border-slate-50 flex justify-between items-center">
+            <div className="p-8 border-b border-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0">
               <h3 className="text-xl font-bold text-slate-900">Approved Students</h3>
-              <div className="flex space-x-2">
-                <button onClick={handleExportCSV} className="text-xs font-bold text-slate-500 hover:text-blue-600 px-3 py-1 rounded-lg border border-slate-200">Export CSV</button>
-                <button onClick={handlePrint} className="text-xs font-bold text-slate-500 hover:text-blue-600 px-3 py-1 rounded-lg border border-slate-200">Print List</button>
+              <div className="flex items-center space-x-4">
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Filter students..."
+                    value={tableSearch.students}
+                    onChange={(e) => setTableSearch({...tableSearch, students: e.target.value})}
+                    className="bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all w-64"
+                  />
+                </div>
+                <div className="flex space-x-2">
+                  <button onClick={handleExportCSV} className="text-xs font-bold text-slate-500 hover:text-blue-600 px-3 py-2 rounded-lg border border-slate-200">Export CSV</button>
+                  <button onClick={handlePrint} className="text-xs font-bold text-slate-500 hover:text-blue-600 px-3 py-2 rounded-lg border border-slate-200">Print List</button>
+                </div>
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-widest">
                   <tr>
-                    <th className="px-8 py-4">Student Name</th>
-                    <th className="px-8 py-4">Reg Number</th>
-                    <th className="px-8 py-4">Program</th>
-                    <th className="px-8 py-4">Email</th>
+                    <th className="px-8 py-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('name')}>
+                      <div className="flex items-center space-x-1">
+                        <span>Student Name</span>
+                        {sortConfig?.key === 'name' && (sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />)}
+                      </div>
+                    </th>
+                    <th className="px-8 py-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('registrationNumber')}>
+                      <div className="flex items-center space-x-1">
+                        <span>Reg Number</span>
+                        {sortConfig?.key === 'registrationNumber' && (sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />)}
+                      </div>
+                    </th>
+                    <th className="px-8 py-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('program')}>
+                      <div className="flex items-center space-x-1">
+                        <span>Program</span>
+                        {sortConfig?.key === 'program' && (sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />)}
+                      </div>
+                    </th>
+                    <th className="px-8 py-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('email')}>
+                      <div className="flex items-center space-x-1">
+                        <span>Email</span>
+                        {sortConfig?.key === 'email' && (sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />)}
+                      </div>
+                    </th>
                     <th className="px-8 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {filteredList(students).map((user, idx) => (
+                  {getFilteredAndSortedUsers(students, 'students').map((user, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition-colors group">
                       <td className="px-8 py-5 font-semibold text-slate-700">{user.name}</td>
                       <td className="px-8 py-5 text-slate-500 font-mono text-sm">{user.registrationNumber}</td>
@@ -771,7 +906,7 @@ export default function Admin() {
                       </td>
                     </tr>
                   ))}
-                  {filteredList(students).length === 0 && (
+                  {getFilteredAndSortedUsers(students, 'students').length === 0 && (
                     <tr>
                       <td colSpan={5} className="px-8 py-12 text-center text-slate-500">No students found.</td>
                     </tr>
@@ -784,22 +919,49 @@ export default function Admin() {
 
         {activeTab === 'staff' && (
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="p-8 border-b border-slate-50">
-              <h3 className="text-xl font-bold text-slate-900">Staff & Editors</h3>
-              <p className="text-slate-500 text-sm mt-1">Manage administrative roles and editor privileges.</p>
+            <div className="p-8 border-b border-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Staff & Editors</h3>
+                <p className="text-slate-500 text-sm mt-1">Manage administrative roles and editor privileges.</p>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Filter staff..."
+                  value={tableSearch.staff}
+                  onChange={(e) => setTableSearch({...tableSearch, staff: e.target.value})}
+                  className="bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all w-64"
+                />
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-widest">
                   <tr>
-                    <th className="px-8 py-4">Name</th>
-                    <th className="px-8 py-4">Email</th>
-                    <th className="px-8 py-4">Current Role</th>
+                    <th className="px-8 py-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('name')}>
+                      <div className="flex items-center space-x-1">
+                        <span>Name</span>
+                        {sortConfig?.key === 'name' && (sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />)}
+                      </div>
+                    </th>
+                    <th className="px-8 py-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('email')}>
+                      <div className="flex items-center space-x-1">
+                        <span>Email</span>
+                        {sortConfig?.key === 'email' && (sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />)}
+                      </div>
+                    </th>
+                    <th className="px-8 py-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('role')}>
+                      <div className="flex items-center space-x-1">
+                        <span>Current Role</span>
+                        {sortConfig?.key === 'role' && (sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />)}
+                      </div>
+                    </th>
                     <th className="px-8 py-4 text-right">Change Role</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {staff.map((user, idx) => (
+                  {getFilteredAndSortedUsers(staff, 'staff').map((user, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition-colors">
                       <td className="px-8 py-5 font-semibold text-slate-700">{user.name}</td>
                       <td className="px-8 py-5 text-slate-500 text-sm">{user.email}</td>
@@ -997,11 +1159,21 @@ export default function Admin() {
             </div>
 
             <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-              <div className="p-8 border-b border-slate-50">
+              <div className="p-8 border-b border-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0">
                 <h3 className="text-xl font-bold text-slate-900">Active Timetables</h3>
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Filter timetables..."
+                    value={tableSearch.timetables}
+                    onChange={(e) => setTableSearch({...tableSearch, timetables: e.target.value})}
+                    className="bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all w-64"
+                  />
+                </div>
               </div>
               <div className="divide-y divide-slate-50">
-                {timetables.map((tt, idx) => (
+                {getFilteredAndSortedTimetables().map((tt, idx) => (
                   <div key={idx} className="p-8 flex items-start justify-between group">
                     <div className="flex items-start space-x-4">
                       <div className="bg-slate-100 p-3 rounded-xl">
@@ -1112,11 +1284,21 @@ export default function Admin() {
             </div>
 
             <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-              <div className="p-8 border-b border-slate-50">
+              <div className="p-8 border-b border-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0">
                 <h3 className="text-xl font-bold text-slate-900">All Announcements</h3>
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Filter announcements..."
+                    value={tableSearch.announcements}
+                    onChange={(e) => setTableSearch({...tableSearch, announcements: e.target.value})}
+                    className="bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all w-64"
+                  />
+                </div>
               </div>
               <div className="divide-y divide-slate-50">
-                {announcements.map((ann, idx) => (
+                {getFilteredAndSortedAnnouncements().map((ann, idx) => (
                   <div key={idx} className="p-8 flex items-start justify-between group">
                     <div className="flex items-start space-x-4">
                       <div className="bg-slate-100 p-3 rounded-xl">
@@ -1237,57 +1419,76 @@ export default function Admin() {
                         </div>
 
                         {/* Admin Reply */}
-                        {msg.reply ? (
+                        {msg.reply && (
                           <div className="flex items-start space-x-3 justify-end">
                             <div className="bg-blue-600 text-white p-4 rounded-2xl rounded-tr-none shadow-sm max-w-[80%]">
                               <p className="text-sm whitespace-pre-wrap">{msg.reply}</p>
+                              {msg.repliedAt && (
+                                <div className="text-[10px] text-blue-200 mt-2 text-right">
+                                  {new Date(msg.repliedAt).toLocaleString()}
+                                </div>
+                              )}
                             </div>
                             <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-white font-bold text-xs flex-shrink-0 mt-1">
                               A
                             </div>
                           </div>
-                        ) : (
-                          <div className="flex justify-end pl-12">
-                            <form 
-                              onSubmit={async (e) => {
-                                e.preventDefault();
-                                const form = e.target as HTMLFormElement;
-                                const replyContent = (form.elements.namedItem('reply') as HTMLTextAreaElement).value;
-                                if (!replyContent) return;
-                                
-                                try {
-                                  await updateDoc(doc(db, 'messages', msg.id!), {
-                                    reply: replyContent,
-                                    isRead: true
-                                  });
-                                  form.reset();
-                                } catch (err) {
-                                  console.error('Error replying:', err);
-                                  setMessage({ type: 'error', text: 'Failed to send reply.' });
-                                }
-                              }}
-                              className="w-full max-w-[80%] bg-white border border-slate-200 rounded-2xl p-3 shadow-sm"
-                            >
-                              <textarea
-                                name="reply"
-                                required
-                                placeholder={`Reply to "${msg.subject}"...`}
-                                className="w-full bg-transparent text-sm focus:outline-none resize-none"
-                                rows={2}
-                              />
-                              <div className="flex justify-end mt-2">
-                                <button 
-                                  type="submit"
-                                  className="bg-slate-900 text-white hover:bg-slate-800 px-4 py-1.5 rounded-lg text-xs font-bold transition-all"
-                                >
-                                  Send Reply
-                                </button>
-                              </div>
-                            </form>
-                          </div>
                         )}
                       </div>
                     ))}
+                  </div>
+                  <div className="p-6 border-t border-slate-100 bg-white">
+                    <form 
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        const form = e.target as HTMLFormElement;
+                        const replyContent = (form.elements.namedItem('reply') as HTMLTextAreaElement).value;
+                        const messageId = (form.elements.namedItem('messageId') as HTMLSelectElement).value;
+                        if (!replyContent || !messageId) return;
+                        
+                        try {
+                          await updateDoc(doc(db, 'messages', messageId), {
+                            reply: replyContent,
+                            repliedAt: Date.now(),
+                            isRead: true
+                          });
+                          form.reset();
+                        } catch (err) {
+                          console.error('Error replying:', err);
+                          setMessage({ type: 'error', text: 'Failed to send reply.' });
+                        }
+                      }}
+                      className="space-y-4"
+                    >
+                      <select
+                        name="messageId"
+                        required
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                        defaultValue=""
+                      >
+                        <option value="" disabled>Select a subject to reply to...</option>
+                        {selectedConversation.messages.map(msg => (
+                          <option key={msg.id} value={msg.id}>
+                            {msg.subject} {msg.reply ? '(Already replied)' : '(Unreplied)'}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex space-x-4">
+                        <textarea
+                          name="reply"
+                          required
+                          placeholder="Type your reply here..."
+                          className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all resize-none"
+                          rows={2}
+                        />
+                        <button 
+                          type="submit"
+                          className="bg-blue-600 text-white hover:bg-blue-700 px-6 rounded-xl text-sm font-bold transition-all shadow-sm flex-shrink-0"
+                        >
+                          Send Reply
+                        </button>
+                      </div>
+                    </form>
                   </div>
                 </>
               ) : (
@@ -1523,7 +1724,7 @@ export default function Admin() {
               </div>
               <div className="p-8 space-y-6">
                 <p className="text-slate-600">
-                  Are you sure you want to approve the account for <strong>{approvalUser.name}</strong>?
+                  Are you sure you want to approve the account for <strong>{approvalUser.name || 'Unknown User'}</strong>?
                 </p>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Assign Role</label>
@@ -1583,7 +1784,7 @@ export default function Admin() {
                 <div className="bg-red-50 text-red-600 p-4 rounded-xl flex items-start space-x-3">
                   <AlertCircle className="h-6 w-6 shrink-0" />
                   <p className="text-sm font-medium">
-                    Are you sure you want to reject and delete the registration for <strong>{rejectUser.name}</strong>? This action cannot be undone.
+                    Are you sure you want to reject and delete the registration for <strong>{rejectUser.name || 'Unknown User'}</strong>? This action cannot be undone.
                   </p>
                 </div>
                 <div className="pt-4 flex space-x-4">

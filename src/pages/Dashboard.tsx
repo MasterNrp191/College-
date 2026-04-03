@@ -381,6 +381,7 @@ export default function Dashboard() {
                       <th className="px-8 py-4">Grade</th>
                       <th className="px-8 py-4">Semester</th>
                       <th className="px-8 py-4">Year</th>
+                      <th className="px-8 py-4 text-right">File</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
@@ -391,11 +392,18 @@ export default function Dashboard() {
                         <td className="px-8 py-5"><span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-lg font-bold">{result.grade}</span></td>
                         <td className="px-8 py-5 text-slate-500 text-sm">{result.semester}</td>
                         <td className="px-8 py-5 text-slate-500 text-sm">{result.year}</td>
+                        <td className="px-8 py-5 text-right">
+                          {result.fileUrl ? (
+                            <a href={result.fileUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 font-bold text-sm">Download</a>
+                          ) : (
+                            <span className="text-slate-400 text-sm">N/A</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                     {results.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-8 py-8 text-center text-slate-500">No results found.</td>
+                        <td colSpan={6} className="px-8 py-8 text-center text-slate-500">No results found.</td>
                       </tr>
                     )}
                   </tbody>

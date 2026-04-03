@@ -45,6 +45,7 @@ export interface Result {
   grade: string;
   semester: string;
   year: string;
+  fileUrl?: string;
   createdAt: number;
 }
 

@@ -119,7 +119,8 @@ export default function Admin() {
     courseCode: '',
     grade: '',
     semester: 'Semester 1',
-    year: '2024/2025'
+    year: '2024/2025',
+    fileUrl: ''
   });
 
   // Form state for announcements
@@ -321,7 +322,8 @@ export default function Admin() {
         courseCode: '',
         grade: '',
         semester: 'Semester 1',
-        year: '2024/2025'
+        year: '2024/2025',
+        fileUrl: ''
       });
       setSelectedStudentId('');
     } catch (error: any) {
@@ -937,7 +939,7 @@ export default function Admin() {
                       <td className="px-8 py-5 text-slate-500 text-sm">{user.email}</td>
                       <td className="px-8 py-5 text-right">
                         {(isAdmin || isBursar) && (
-                          <div className="flex justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex justify-end space-x-2 transition-opacity">
                             <button onClick={() => {
                               setSelectedStudentId(user.id!);
                               setActiveTab('results');
@@ -1129,6 +1131,23 @@ export default function Admin() {
                       placeholder="e.g. 2024/2025" 
                     />
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Result File (Optional)</label>
+                  <input 
+                    type="file" 
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setResultForm({...resultForm, fileUrl: reader.result as string});
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all" 
+                  />
                 </div>
 
                 <div className="pt-8 flex justify-end">

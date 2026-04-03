@@ -13,6 +13,7 @@ import {
   FileText,
   Clock,
   CheckCircle2,
+  AlertCircle,
   Megaphone,
   Quote as QuoteIcon,
   Heart,
@@ -45,7 +46,7 @@ export default function Dashboard() {
 
     const q = query(
       collection(db, 'results'),
-      where('studentUid', '==', user.uid)
+      where('studentUid', '==', user.uid || user.id)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -62,7 +63,7 @@ export default function Dashboard() {
 
     const fq = query(
       collection(db, 'student_files'),
-      where('studentUid', '==', user.uid)
+      where('studentUid', '==', user.uid || user.id)
     );
     const unsubscribeFiles = onSnapshot(fq, (snapshot) => {
       const filesData = snapshot.docs.map(doc => ({
@@ -93,7 +94,7 @@ export default function Dashboard() {
 
     const mq = query(
       collection(db, 'messages'),
-      where('senderId', '==', user.uid)
+      where('senderId', '==', user.uid || user.id)
     );
     const unsubscribeMessages = onSnapshot(mq, (snapshot) => {
       const mData = snapshot.docs.map(doc => ({
@@ -676,14 +677,23 @@ export default function Dashboard() {
               </div>
 
               <div className="p-6 border-t border-slate-100 bg-white">
+                {formStatus.text && (
+                  <div className={`mb-4 p-3 rounded-xl text-sm font-bold flex items-center space-x-2 ${
+                    formStatus.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+                  }`}>
+                    {formStatus.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+                    <span>{formStatus.text}</span>
+                  </div>
+                )}
                 <form 
                   onSubmit={async (e) => {
                     e.preventDefault();
                     if (!messageForm.subject || !messageForm.content) return;
                     
+                    setFormStatus({ type: '', text: '' });
                     try {
                       await addDoc(collection(db, 'messages'), {
-                        senderId: user.uid,
+                        senderId: user.uid || user.id,
                         senderName: user.name,
                         subject: messageForm.subject,
                         content: messageForm.content,
@@ -691,8 +701,11 @@ export default function Dashboard() {
                         isRead: false
                       });
                       setMessageForm({ subject: '', content: '' });
+                      setFormStatus({ type: 'success', text: 'Message sent successfully!' });
+                      setTimeout(() => setFormStatus({ type: '', text: '' }), 3000);
                     } catch (err) {
                       console.error('Error sending message:', err);
+                      setFormStatus({ type: 'error', text: 'Failed to send message.' });
                     }
                   }}
                   className="space-y-4"

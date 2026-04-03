@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent, useMemo } from 'react';
+import React, { useState, useEffect, FormEvent, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, 
@@ -228,9 +228,15 @@ export default function Admin() {
   const handleUploadStudentFile = async (e: FormEvent) => {
     e.preventDefault();
     if (!uploadFileModalUser) return;
+    
+    if (!studentFileForm.fileUrl) {
+      setMessage({ type: 'error', text: 'Please select a file to upload.' });
+      return;
+    }
+
     try {
       await addDoc(collection(db, 'student_files'), {
-        studentUid: uploadFileModalUser.uid,
+        studentUid: uploadFileModalUser.uid || uploadFileModalUser.id,
         fileName: studentFileForm.fileName,
         fileUrl: studentFileForm.fileUrl,
         createdAt: Date.now()
@@ -242,6 +248,27 @@ export default function Admin() {
       console.error("Error uploading file:", error);
       setMessage({ type: 'error', text: 'Failed to upload file.' });
     }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Limit to 500KB to prevent Firestore limit issues
+    if (file.size > 500 * 1024) {
+      setMessage({ type: 'error', text: 'File size must be less than 500KB.' });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setStudentFileForm({
+        ...studentFileForm,
+        fileUrl: reader.result as string,
+        fileName: studentFileForm.fileName || file.name
+      });
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleUpdateRole = async (userId: string, newRole: UserRole) => {
@@ -270,7 +297,7 @@ export default function Admin() {
 
       await addDoc(collection(db, 'results'), {
         ...resultForm,
-        studentUid: student.uid,
+        studentUid: student.uid || student.id,
         createdAt: Date.now()
       });
 
@@ -1398,7 +1425,9 @@ export default function Admin() {
                     </div>
                     <div>
                       <h3 className="font-bold text-slate-900">{selectedConversation.user.name}</h3>
-                      <p className="text-xs text-slate-500">Student</p>
+                      <p className="text-xs text-slate-500">
+                        {selectedConversation.user.id.startsWith('visitor_') ? 'Visitor' : 'Student'}
+                      </p>
                     </div>
                   </div>
                   <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
@@ -1841,15 +1870,16 @@ export default function Admin() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">File URL</label>
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Select File (Max 500KB)</label>
                   <input 
-                    type="url" 
-                    required
-                    value={studentFileForm.fileUrl}
-                    onChange={(e) => setStudentFileForm({...studentFileForm, fileUrl: e.target.value})}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
-                    placeholder="https://example.com/file.pdf"
+                    type="file" 
+                    required={!studentFileForm.fileUrl}
+                    onChange={handleFileChange}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                   />
+                  {studentFileForm.fileUrl && (
+                    <p className="text-xs text-green-600 font-medium ml-1 mt-1">File selected and ready to upload.</p>
+                  )}
                 </div>
                 <div className="pt-4 flex space-x-4">
                   <button 

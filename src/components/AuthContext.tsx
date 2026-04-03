@@ -47,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
           if (userDoc.exists()) {
-            setUser(userDoc.data() as Student);
+            setUser({ id: userDoc.id, ...userDoc.data() } as Student);
           } else {
             // This might happen if registration failed halfway
             setUser(null);
@@ -83,9 +83,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       // Update last login
-      const updatedData = { ...userData, lastLogin: Date.now() };
-      await setDoc(doc(db, 'users', firebaseUser.uid), updatedData);
-      setUser(updatedData);
+      const updatedData = { id: userDoc.id, ...userData, lastLogin: Date.now() };
+      await setDoc(doc(db, 'users', firebaseUser.uid), { ...userData, lastLogin: Date.now() });
+      setUser(updatedData as Student);
     } else {
       // Recovery for admin account if auth exists but firestore doc failed to create previously
       if (email === 'charlesmkonyi87@gmail.com') {
@@ -134,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const role = isAdminEmail ? 'admin' : (isStaff ? staffRole : 'student');
 
     const studentData: Student = {
+      id: firebaseUser.uid,
       uid: firebaseUser.uid,
       name,
       email: email,

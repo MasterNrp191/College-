@@ -122,6 +122,7 @@ service cloud.firestore {
       return data.keys().hasAll(['senderId', 'senderName', 'subject', 'content', 'isRead', 'createdAt']) &&
              (!('reply' in data) || data.reply is string) &&
              (!('repliedAt' in data) || data.repliedAt is number) &&
+             (!('senderEmail' in data) || data.senderEmail is string) &&
              data.senderId is string &&
              data.senderName is string &&
              data.subject is string &&
@@ -219,7 +220,8 @@ service cloud.firestore {
 
     match /messages/{messageId} {
       allow read: if isAuthenticated() && (isOwner(resource.data.senderId) || isAdmin());
-      allow create: if isAuthenticated() && isOwner(request.resource.data.senderId) && isValidMessage(request.resource.data);
+      allow create: if (isAuthenticated() && isOwner(request.resource.data.senderId) && isValidMessage(request.resource.data)) || 
+                       (request.resource.data.senderId == 'visitor' && isValidMessage(request.resource.data));
       allow update: if isAuthenticated() && isAdmin() && isValidMessage(request.resource.data) && request.resource.data.senderId == resource.data.senderId;
       allow delete: if isAdmin();
     }

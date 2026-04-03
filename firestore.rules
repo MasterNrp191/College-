@@ -220,9 +220,9 @@ service cloud.firestore {
 
     match /student_files/{fileId} {
       allow read: if isAuthenticated() && (request.auth.uid == resource.data.studentUid || isStaff());
-      allow create: if isStaff() && !isBursar() && isValidStudentFile(request.resource.data);
-      allow update: if isStaff() && !isBursar() && isValidStudentFile(request.resource.data);
-      allow delete: if isStaff() && !isBursar();
+      allow create: if isStaff() && isValidStudentFile(request.resource.data);
+      allow update: if isStaff() && isValidStudentFile(request.resource.data);
+      allow delete: if isStaff();
     }
 
     match /profile_picture_requests/{requestId} {

@@ -283,9 +283,15 @@ export default function Admin() {
       setMessage({ type: 'success', text: 'File uploaded successfully!' });
       setUploadFileModalUser(null);
       setStudentFileForm({ fileName: '', fileUrl: '' });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error uploading file:", error);
-      setMessage({ type: 'error', text: 'Failed to upload file.' });
+      const errInfo = {
+        error: error.message,
+        operationType: 'create',
+        path: 'student_files',
+        user: auth.currentUser?.uid
+      };
+      setMessage({ type: 'error', text: 'Failed to upload file: ' + JSON.stringify(errInfo) });
     }
   };
 

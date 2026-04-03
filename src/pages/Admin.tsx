@@ -52,6 +52,7 @@ export default function Admin() {
     timetables: ''
   });
   const [allUsers, setAllUsers] = useState<Student[]>([]);
+  const [results, setResults] = useState<Result[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [timetables, setTimetables] = useState<any[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -59,6 +60,7 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [editingResultId, setEditingResultId] = useState<string | null>(null);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [currentQuote, setCurrentQuote] = useState(MEDICAL_QUOTES[0]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -192,6 +194,16 @@ export default function Admin() {
       setProfilePictureRequests(ppData);
     });
 
+    // Fetch Results
+    const rq = query(collection(db, 'results'), orderBy('createdAt', 'desc'));
+    const unsubscribeResults = onSnapshot(rq, (snapshot) => {
+      const resultsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Result[];
+      setResults(resultsData);
+    });
+
     // Rotate quotes
     const quoteInterval = setInterval(() => {
       const randomIndex = Math.floor(Math.random() * MEDICAL_QUOTES.length);
@@ -204,6 +216,7 @@ export default function Admin() {
       unsubscribeTimetables();
       unsubscribeMessages();
       unsubscribeProfilePictures();
+      unsubscribeResults();
       clearInterval(quoteInterval);
     };
   }, []);
@@ -237,6 +250,17 @@ export default function Admin() {
     } catch (error) {
       console.error("Error rejecting account:", error);
       setMessage({ type: 'error', text: 'Failed to reject account.' });
+    }
+  };
+
+  const handleDeleteResult = async (resultId: string) => {
+    if (!confirm('Are you sure you want to delete this result?')) return;
+    try {
+      await deleteDoc(doc(db, 'results', resultId));
+      setMessage({ type: 'success', text: 'Result deleted successfully!' });
+    } catch (error) {
+      console.error("Error deleting result:", error);
+      setMessage({ type: 'error', text: 'Failed to delete result.' });
     }
   };
 
@@ -310,13 +334,22 @@ export default function Admin() {
       const student = allUsers.find(s => s.id === selectedStudentId);
       if (!student) throw new Error("Student not found");
 
-      await addDoc(collection(db, 'results'), {
-        ...resultForm,
-        studentUid: student.uid || student.id,
-        createdAt: Date.now()
-      });
+      if (editingResultId) {
+        await updateDoc(doc(db, 'results', editingResultId), {
+          ...resultForm,
+          studentUid: student.uid || student.id,
+        });
+        setMessage({ type: 'success', text: 'Result updated successfully!' });
+        setEditingResultId(null);
+      } else {
+        await addDoc(collection(db, 'results'), {
+          ...resultForm,
+          studentUid: student.uid || student.id,
+          createdAt: Date.now()
+        });
+        setMessage({ type: 'success', text: 'Result uploaded successfully!' });
+      }
 
-      setMessage({ type: 'success', text: 'Result uploaded successfully!' });
       setResultForm({
         courseName: '',
         courseCode: '',
@@ -945,6 +978,10 @@ export default function Admin() {
                               setActiveTab('results');
                             }} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Upload Results"><Award className="h-4 w-4" /></button>
                             <button onClick={() => setUploadFileModalUser(user)} className="p-2 text-slate-400 hover:text-green-600 transition-colors" title="Upload File"><Upload className="h-4 w-4" /></button>
+                            <button onClick={() => {
+                              // Add functionality to view files
+                              alert('View files for ' + user.name);
+                            }} className="p-2 text-slate-400 hover:text-purple-600 transition-colors" title="View Files"><FileText className="h-4 w-4" /></button>
                             <button onClick={() => handleEditUser(user)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Edit Student"><Edit className="h-4 w-4" /></button>
                             {isAdmin && (
                               <button onClick={() => handleDeleteUser(user.id!)} className="p-2 text-slate-400 hover:text-red-600 transition-colors" title="Delete Student"><Trash2 className="h-4 w-4" /></button>
@@ -1175,6 +1212,51 @@ export default function Admin() {
                   </button>
                 </div>
               </form>
+            </div>
+            
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="p-8 border-b border-slate-50">
+                <h3 className="text-xl font-bold text-slate-900">All Results</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-widest">
+                    <tr>
+                      <th className="px-8 py-4">Student</th>
+                      <th className="px-8 py-4">Course</th>
+                      <th className="px-8 py-4">Grade</th>
+                      <th className="px-8 py-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {results.map((result) => {
+                      const student = allUsers.find(u => u.uid === result.studentUid || u.id === result.studentUid);
+                      return (
+                        <tr key={result.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-8 py-5 font-semibold text-slate-700">{student?.name || 'Unknown'}</td>
+                          <td className="px-8 py-5 text-slate-600">{result.courseName} ({result.courseCode})</td>
+                          <td className="px-8 py-5"><span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-lg font-bold">{result.grade}</span></td>
+                          <td className="px-8 py-5 text-right">
+                            <button onClick={() => {
+                              setResultForm({
+                                courseName: result.courseName,
+                                courseCode: result.courseCode,
+                                grade: result.grade,
+                                semester: result.semester,
+                                year: result.year,
+                                fileUrl: result.fileUrl || ''
+                              });
+                              setSelectedStudentId(result.studentUid);
+                              setEditingResultId(result.id);
+                            }} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Edit Result"><Edit className="h-4 w-4" /></button>
+                            <button onClick={() => handleDeleteResult(result.id)} className="p-2 text-slate-400 hover:text-red-600 transition-colors" title="Delete Result"><Trash2 className="h-4 w-4" /></button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}

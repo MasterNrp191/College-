@@ -66,11 +66,13 @@ export default function Dashboard() {
       collection(db, 'student_files'),
       where('studentUid', '==', user.uid || user.id)
     );
+    console.log("Fetching files for studentUid:", user.uid || user.id);
     const unsubscribeFiles = onSnapshot(fq, (snapshot) => {
       const filesData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
+      console.log("Fetched files:", filesData);
       filesData.sort((a: any, b: any) => b.createdAt - a.createdAt);
       setStudentFiles(filesData);
     });

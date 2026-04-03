@@ -31,6 +31,8 @@ export interface Student {
   role: UserRole;
   approved: boolean;
   feesRemaining?: number;
+  yearOfStudy?: string;
+  profilePictureUrl?: string;
   createdAt: number;
   lastLogin?: number;
 }

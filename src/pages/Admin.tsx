@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, 
   UserPlus, 
+  User,
   Upload, 
   Search, 
   Edit, 
@@ -34,7 +35,7 @@ import {
   Award
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, orderBy, serverTimestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, orderBy, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Student, Result, Announcement, UserRole, Message } from '@/types';
 import { useAuth } from '@/components/AuthContext';
@@ -54,6 +55,7 @@ export default function Admin() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [timetables, setTimetables] = useState<any[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [profilePictureRequests, setProfilePictureRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -61,7 +63,6 @@ export default function Admin() {
   const [currentQuote, setCurrentQuote] = useState(MEDICAL_QUOTES[0]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
-  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
 
   const handleSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -180,6 +181,16 @@ export default function Admin() {
       setMessages(mData);
     });
 
+    // Fetch Profile Picture Requests
+    const ppq = query(collection(db, 'profile_picture_requests'), where('status', '==', 'pending'));
+    const unsubscribeProfilePictures = onSnapshot(ppq, (snapshot) => {
+      const ppData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setProfilePictureRequests(ppData);
+    });
+
     // Rotate quotes
     const quoteInterval = setInterval(() => {
       const randomIndex = Math.floor(Math.random() * MEDICAL_QUOTES.length);
@@ -191,6 +202,7 @@ export default function Admin() {
       unsubscribeAnnouncements();
       unsubscribeTimetables();
       unsubscribeMessages();
+      unsubscribeProfilePictures();
       clearInterval(quoteInterval);
     };
   }, []);
@@ -237,13 +249,8 @@ export default function Admin() {
     }
 
     try {
-      const targetUid = uploadFileModalUser.uid || uploadFileModalUser.id;
-      if (!targetUid) {
-        setMessage({ type: 'error', text: 'Student UID is missing.' });
-        return;
-      }
       await addDoc(collection(db, 'student_files'), {
-        studentUid: targetUid,
+        studentUid: uploadFileModalUser.uid || uploadFileModalUser.id,
         fileName: studentFileForm.fileName,
         fileUrl: studentFileForm.fileUrl,
         createdAt: Date.now()
@@ -290,8 +297,7 @@ export default function Admin() {
 
   const handleUploadResult = async (e: FormEvent) => {
     e.preventDefault();
-    const targetId = selectedStudentId || selectedUserId;
-    if (!targetId) {
+    if (!selectedStudentId) {
       setMessage({ type: 'error', text: 'Please select a student.' });
       return;
     }
@@ -300,7 +306,7 @@ export default function Admin() {
     setMessage({ type: '', text: '' });
 
     try {
-      const student = allUsers.find(s => s.id === targetId || s.uid === targetId);
+      const student = allUsers.find(s => s.id === selectedStudentId);
       if (!student) throw new Error("Student not found");
 
       await addDoc(collection(db, 'results'), {
@@ -318,7 +324,6 @@ export default function Admin() {
         year: '2024/2025'
       });
       setSelectedStudentId('');
-      setSelectedUserId(null);
     } catch (error: any) {
       console.error("Error uploading result:", error);
       setMessage({ type: 'error', text: error.message || 'Failed to upload result.' });
@@ -591,6 +596,7 @@ export default function Admin() {
               { id: 'approvals', label: 'Approvals', icon: UserCheck, count: pending.length },
               { id: 'students', label: 'Students', icon: Users },
               { id: 'staff', label: 'Staff & Editors', icon: ShieldCheck },
+              { id: 'profile-pictures', label: 'Profile Pictures', icon: User, count: profilePictureRequests.length },
             ] : []),
             ...(isBursar ? [
               { id: 'students', label: 'Students', icon: Users },
@@ -929,89 +935,17 @@ export default function Admin() {
                       <td className="px-8 py-5 text-slate-500 font-mono text-sm">{user.registrationNumber}</td>
                       <td className="px-8 py-5"><span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-lg font-bold text-xs">{user.program}</span></td>
                       <td className="px-8 py-5 text-slate-500 text-sm">{user.email}</td>
-                      <td className="px-8 py-5 text-right relative">
+                      <td className="px-8 py-5 text-right">
                         {(isAdmin || isBursar) && (
-                          <div className="flex justify-end">
-                            <button 
-                              onClick={() => setOpenDropdownId(openDropdownId === user.id ? null : user.id!)}
-                              className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            >
-                              <MoreVertical className="h-5 w-5" />
-                            </button>
-                            
-                            {openDropdownId === user.id && (
-                              <>
-                                <div 
-                                  className="fixed inset-0 z-10"
-                                  onClick={() => setOpenDropdownId(null)}
-                                />
-                                <div className="absolute right-8 top-12 w-48 bg-white rounded-xl shadow-xl border border-slate-100 py-2 z-20 overflow-hidden">
-                                  <button 
-                                    onClick={() => {
-                                      handleEditUser(user);
-                                      setOpenDropdownId(null);
-                                    }}
-                                    className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-blue-600 flex items-center space-x-2 transition-colors"
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                    <span>Edit Fees & Profile</span>
-                                  </button>
-                                  <button 
-                                    onClick={() => {
-                                      setSelectedUserId(user.uid || user.id!);
-                                      setActiveTab('results');
-                                      setOpenDropdownId(null);
-                                    }}
-                                    className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-purple-600 flex items-center space-x-2 transition-colors"
-                                  >
-                                    <Award className="h-4 w-4" />
-                                    <span>Upload Result</span>
-                                  </button>
-                                  <button 
-                                    onClick={() => {
-                                      setUploadFileModalUser(user);
-                                      setOpenDropdownId(null);
-                                    }}
-                                    className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-green-600 flex items-center space-x-2 transition-colors"
-                                  >
-                                    <Upload className="h-4 w-4" />
-                                    <span>Upload File</span>
-                                  </button>
-                                  {isAdmin && (
-                                    <>
-                                      <div className="h-px bg-slate-100 my-1"></div>
-                                      <button 
-                                        onClick={async () => {
-                                          if (window.confirm('Are you sure you want to deactivate this account?')) {
-                                            try {
-                                              await updateDoc(doc(db, 'users', user.uid || user.id!), { approved: false });
-                                              setMessage({ type: 'success', text: 'Account deactivated.' });
-                                              setOpenDropdownId(null);
-                                            } catch (err) {
-                                              console.error(err);
-                                              setMessage({ type: 'error', text: 'Failed to deactivate account.' });
-                                            }
-                                          }
-                                        }}
-                                        className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 flex items-center space-x-2 transition-colors"
-                                      >
-                                        <UserX className="h-4 w-4" />
-                                        <span>Deactivate Account</span>
-                                      </button>
-                                      <button 
-                                        onClick={() => {
-                                          handleDeleteUser(user.id!);
-                                          setOpenDropdownId(null);
-                                        }}
-                                        className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 flex items-center space-x-2 transition-colors"
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                        <span>Delete Student</span>
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              </>
+                          <div className="flex justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => {
+                              setSelectedStudentId(user.id!);
+                              setActiveTab('results');
+                            }} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Upload Results"><Award className="h-4 w-4" /></button>
+                            <button onClick={() => setUploadFileModalUser(user)} className="p-2 text-slate-400 hover:text-green-600 transition-colors" title="Upload File"><Upload className="h-4 w-4" /></button>
+                            <button onClick={() => handleEditUser(user)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Edit Student"><Edit className="h-4 w-4" /></button>
+                            {isAdmin && (
+                              <button onClick={() => handleDeleteUser(user.id!)} className="p-2 text-slate-400 hover:text-red-600 transition-colors" title="Delete Student"><Trash2 className="h-4 w-4" /></button>
                             )}
                           </div>
                         )}
@@ -1126,15 +1060,12 @@ export default function Admin() {
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Select Student</label>
                   <select 
                     required
-                    value={selectedStudentId || selectedUserId || ''}
-                    onChange={(e) => {
-                      setSelectedStudentId(e.target.value);
-                      setSelectedUserId(e.target.value);
-                    }}
+                    value={selectedStudentId}
+                    onChange={(e) => setSelectedStudentId(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all appearance-none"
                   >
                     <option value="">Select a student...</option>
-                    {students.map(s => <option key={s.uid || s.id} value={s.uid || s.id}>{s.name} ({s.registrationNumber})</option>)}
+                    {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.registrationNumber})</option>)}
                   </select>
                 </div>
 
@@ -1513,7 +1444,9 @@ export default function Admin() {
                     </div>
                     <div>
                       <h3 className="font-bold text-slate-900">{selectedConversation.user.name}</h3>
-                      <p className="text-xs text-slate-500">Student</p>
+                      <p className="text-xs text-slate-500">
+                        {selectedConversation.user.id.startsWith('visitor_') ? 'Visitor' : 'Student'}
+                      </p>
                     </div>
                   </div>
                   <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
@@ -1615,54 +1548,38 @@ export default function Admin() {
             </div>
           </div>
         )}
-        {activeTab === 'settings' && (
-          <div className="max-w-3xl space-y-8">
-            <div className="bg-white p-10 rounded-3xl border border-slate-100 shadow-sm space-y-8">
-              <div className="flex items-center space-x-4 mb-8">
-                <div className="bg-slate-100 w-12 h-12 rounded-xl flex items-center justify-center text-slate-600">
-                  <Settings className="h-6 w-6" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-bold text-slate-900">Admin Settings</h3>
-                  <p className="text-slate-500 text-sm">Manage system preferences and configurations.</p>
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                  <div>
-                    <div className="font-bold text-slate-900">Email Notifications</div>
-                    <div className="text-sm text-slate-500">Receive updates about new registrations.</div>
+        {activeTab === 'profile-pictures' && (
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="p-8 border-b border-slate-50">
+              <h3 className="text-xl font-bold text-slate-900">Pending Profile Pictures</h3>
+              <p className="text-slate-500 text-sm mt-1">Review and approve student profile pictures.</p>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {profilePictureRequests.map((req) => (
+                <div key={req.id} className="p-8 flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <img src={req.imageUrl} alt="Profile" className="w-16 h-16 rounded-full object-cover" />
+                    <div>
+                      <h4 className="font-bold text-slate-900">{allUsers.find(u => u.uid === req.studentUid)?.name || 'Unknown Student'}</h4>
+                      <p className="text-slate-500 text-sm">{new Date(req.createdAt).toLocaleDateString()}</p>
+                    </div>
                   </div>
-                  <div className="w-12 h-6 bg-blue-600 rounded-full relative cursor-pointer">
-                    <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm" />
-                  </div>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                  <div>
-                    <div className="font-bold text-slate-900">System Maintenance Mode</div>
-                    <div className="text-sm text-slate-500">Temporarily disable student access.</div>
-                  </div>
-                  <div className="w-12 h-6 bg-slate-200 rounded-full relative cursor-pointer">
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm" />
+                  <div className="flex space-x-2">
+                    <button onClick={async () => {
+                      await updateDoc(doc(db, 'users', allUsers.find(u => u.uid === req.studentUid)?.id!), { profilePictureUrl: req.imageUrl });
+                      await updateDoc(doc(db, 'profile_picture_requests', req.id), { status: 'approved' });
+                      setMessage({ type: 'success', text: 'Profile picture approved!' });
+                    }} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold">Approve</button>
+                    <button onClick={async () => {
+                      await updateDoc(doc(db, 'profile_picture_requests', req.id), { status: 'rejected' });
+                      setMessage({ type: 'success', text: 'Profile picture rejected!' });
+                    }} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold">Reject</button>
                   </div>
                 </div>
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                  <div>
-                    <div className="font-bold text-slate-900">Auto-Approve Students</div>
-                    <div className="text-sm text-slate-500">Automatically approve new student signups.</div>
-                  </div>
-                  <div className="w-12 h-6 bg-slate-200 rounded-full relative cursor-pointer">
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-8 border-t border-slate-50">
-                <button className="text-red-600 font-bold text-sm hover:underline">
-                  Clear System Cache
-                </button>
-              </div>
+              ))}
+              {profilePictureRequests.length === 0 && (
+                <div className="p-12 text-center text-slate-500">No pending profile picture requests.</div>
+              )}
             </div>
           </div>
         )}
@@ -1788,6 +1705,15 @@ export default function Admin() {
                     <option value="Clinical Radiology">Clinical Radiology</option>
                   </select>
                 </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Year of Study</label>
+                  <input 
+                    type="text" 
+                    value={editingUser.yearOfStudy || ''}
+                    onChange={(e) => setEditingUser({...editingUser, yearOfStudy: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                  />
+                </div>
                 {(isBursar || isAdmin) && (
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Fees Remaining (TZS)</label>
@@ -1807,27 +1733,6 @@ export default function Admin() {
                   >
                     Cancel
                   </button>
-                  {isAdmin && (
-                    <button 
-                      type="button"
-                      onClick={async () => {
-                        if (window.confirm('Are you sure you want to deactivate this account?')) {
-                          try {
-                            await updateDoc(doc(db, 'users', editingUser.uid || editingUser.id!), { approved: false });
-                            setMessage({ type: 'success', text: 'Account deactivated.' });
-                            setIsEditModalOpen(false);
-                          } catch (err) {
-                            console.error(err);
-                            setMessage({ type: 'error', text: 'Failed to deactivate account.' });
-                          }
-                        }
-                      }}
-                      className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-white bg-red-600 hover:bg-red-700 transition-all shadow-lg shadow-red-200 flex items-center justify-center space-x-2"
-                    >
-                      <UserX className="h-4 w-4" />
-                      <span>Deactivate</span>
-                    </button>
-                  )}
                   <button 
                     type="submit"
                     className="flex-1 px-6 py-3.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 flex items-center justify-center space-x-2"

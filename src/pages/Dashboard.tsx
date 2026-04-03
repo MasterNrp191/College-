@@ -17,6 +17,7 @@ import {
   Megaphone,
   Quote as QuoteIcon,
   Heart,
+  Edit,
   Download,
   ExternalLink,
   MessageSquare
@@ -540,8 +541,28 @@ export default function Dashboard() {
             <div className="max-w-3xl space-y-8">
               <div className="bg-white p-10 rounded-3xl border border-slate-100 shadow-sm space-y-8">
                 <div className="flex items-center space-x-6">
-                  <div className="w-24 h-24 bg-blue-600 rounded-3xl flex items-center justify-center text-white text-4xl font-bold shadow-xl shadow-blue-200">
-                    {user.name.charAt(0)}
+                  <div className="relative">
+                    <div className="w-24 h-24 bg-blue-600 rounded-3xl flex items-center justify-center text-white text-4xl font-bold shadow-xl shadow-blue-200 overflow-hidden">
+                      {user.profilePictureUrl ? <img src={user.profilePictureUrl} alt="Profile" className="w-full h-full object-cover" /> : user.name.charAt(0)}
+                    </div>
+                    <label className="absolute -bottom-2 -right-2 bg-white p-2 rounded-full shadow-lg cursor-pointer hover:bg-slate-50">
+                      <input type="file" className="hidden" accept="image/*" onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onloadend = async () => {
+                          await addDoc(collection(db, 'profile_picture_requests'), {
+                            studentUid: user.uid || user.id,
+                            imageUrl: reader.result as string,
+                            status: 'pending',
+                            createdAt: Date.now()
+                          });
+                          setFormStatus({ type: 'success', text: 'Profile picture submitted for approval!' });
+                        };
+                        reader.readAsDataURL(file);
+                      }} />
+                      <Edit className="h-4 w-4 text-slate-600" />
+                    </label>
                   </div>
                   <div>
                     <h3 className="text-2xl font-bold text-slate-900">{user.name}</h3>
@@ -567,8 +588,8 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">Current Semester</div>
-                    <div className="text-lg font-semibold text-slate-700">Semester 1</div>
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">Year of Study</div>
+                    <div className="text-lg font-semibold text-slate-700">{user.yearOfStudy || 'Not Set'}</div>
                   </div>
                 </div>
 

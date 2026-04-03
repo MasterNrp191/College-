@@ -1140,6 +1140,20 @@ export default function Admin() {
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
+                      
+                      // 500KB limit
+                      if (file.size > 500 * 1024) {
+                        alert('File too large. Please upload a file smaller than 500KB.');
+                        return;
+                      }
+                      
+                      // Allow PDF, JPG, PNG
+                      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png'];
+                      if (!allowedTypes.includes(file.type)) {
+                        alert('Invalid file type. Please upload a PDF, JPG, or PNG.');
+                        return;
+                      }
+
                       const reader = new FileReader();
                       reader.onloadend = () => {
                         setResultForm({...resultForm, fileUrl: reader.result as string});

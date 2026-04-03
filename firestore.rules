@@ -122,7 +122,6 @@ service cloud.firestore {
       return data.keys().hasAll(['senderId', 'senderName', 'subject', 'content', 'isRead', 'createdAt']) &&
              (!('reply' in data) || data.reply is string) &&
              (!('repliedAt' in data) || data.repliedAt is number) &&
-             (!('senderEmail' in data) || data.senderEmail is string) &&
              data.senderId is string &&
              data.senderName is string &&
              data.subject is string &&
@@ -169,6 +168,14 @@ service cloud.firestore {
              data.createdAt is number;
     }
 
+    function isValidProfilePictureRequest(data) {
+      return data.keys().hasOnly(['studentUid', 'imageUrl', 'status', 'createdAt']) &&
+             data.studentUid is string &&
+             data.imageUrl is string &&
+             data.status in ['pending', 'approved', 'rejected'] &&
+             data.createdAt is number;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -191,7 +198,7 @@ service cloud.firestore {
     }
 
     match /results/{resultId} {
-      allow read: if isAuthenticated() && (isApproved() && request.auth.uid == resource.data.studentUid || isStaff());
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.studentUid || isStaff());
       allow create: if isStaff() && !isBursar() && isValidResult(request.resource.data);
       allow update: if isStaff() && !isBursar() && isValidResult(request.resource.data);
       allow delete: if isStaff() && !isBursar();
@@ -212,16 +219,22 @@ service cloud.firestore {
     }
 
     match /student_files/{fileId} {
-      allow read: if isAuthenticated() && (isApproved() && request.auth.uid == resource.data.studentUid || isStaff());
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.studentUid || isStaff());
       allow create: if isStaff() && !isBursar() && isValidStudentFile(request.resource.data);
       allow update: if isStaff() && !isBursar() && isValidStudentFile(request.resource.data);
       allow delete: if isStaff() && !isBursar();
     }
 
+    match /profile_picture_requests/{requestId} {
+      allow read: if isAuthenticated() && (isOwner(resource.data.studentUid) || isStaff());
+      allow create: if isAuthenticated() && isOwner(request.resource.data.studentUid) && isValidProfilePictureRequest(request.resource.data) && request.resource.data.status == 'pending';
+      allow update: if isStaff() && !isBursar() && isValidProfilePictureRequest(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
     match /messages/{messageId} {
       allow read: if isAuthenticated() && (isOwner(resource.data.senderId) || isAdmin());
-      allow create: if (isAuthenticated() && isOwner(request.resource.data.senderId) && isValidMessage(request.resource.data)) || 
-                       (request.resource.data.senderId == 'visitor' && isValidMessage(request.resource.data));
+      allow create: if isAuthenticated() && isOwner(request.resource.data.senderId) && isValidMessage(request.resource.data);
       allow update: if isAuthenticated() && isAdmin() && isValidMessage(request.resource.data) && request.resource.data.senderId == resource.data.senderId;
       allow delete: if isAdmin();
     }

@@ -394,7 +394,15 @@ export default function Dashboard() {
                         <td className="px-8 py-5 text-slate-500 text-sm">{result.year}</td>
                         <td className="px-8 py-5 text-right">
                           {result.fileUrl ? (
-                            <a href={result.fileUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 font-bold text-sm">Download</a>
+                            <a 
+                              href={result.fileUrl} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="text-blue-600 hover:text-blue-800 font-bold text-sm"
+                              download={!result.fileUrl.startsWith('data:application/pdf') && !result.fileUrl.startsWith('data:image/')}
+                            >
+                              {result.fileUrl.startsWith('data:application/pdf') || result.fileUrl.startsWith('data:image/') ? 'View' : 'Download'}
+                            </a>
                           ) : (
                             <span className="text-slate-400 text-sm">N/A</span>
                           )}
@@ -553,7 +561,7 @@ export default function Dashboard() {
                     <div className="w-24 h-24 bg-blue-600 rounded-3xl flex items-center justify-center text-white text-4xl font-bold shadow-xl shadow-blue-200 overflow-hidden">
                       {user.profilePictureUrl ? <img src={user.profilePictureUrl} alt="Profile" className="w-full h-full object-cover" /> : user.name.charAt(0)}
                     </div>
-                    <label className="absolute -bottom-2 -right-2 bg-white p-2 rounded-full shadow-lg cursor-pointer hover:bg-slate-50">
+                    <label className="mt-4 block w-full bg-blue-600 text-white text-center py-2 rounded-lg text-sm font-bold cursor-pointer hover:bg-blue-700 transition-colors">
                       <input type="file" className="hidden" accept="image/*" onChange={async (e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
@@ -569,7 +577,7 @@ export default function Dashboard() {
                         };
                         reader.readAsDataURL(file);
                       }} />
-                      <Edit className="h-4 w-4 text-slate-600" />
+                      Change Picture
                     </label>
                   </div>
                   <div>

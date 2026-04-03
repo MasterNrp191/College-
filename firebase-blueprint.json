@@ -58,6 +58,18 @@
         "createdAt": { "type": "number", "description": "Timestamp of creation" }
       },
       "required": ["title", "content", "category", "date"]
+    },
+    "ProfilePictureRequest": {
+      "title": "Profile Picture Request",
+      "description": "Stores requests for profile picture updates.",
+      "type": "object",
+      "properties": {
+        "studentUid": { "type": "string", "description": "UID of the student" },
+        "imageUrl": { "type": "string", "description": "URL of the profile picture" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"], "description": "Status of the request" },
+        "createdAt": { "type": "number", "description": "Timestamp of creation" }
+      },
+      "required": ["studentUid", "imageUrl", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -76,6 +88,10 @@
     "/announcements/{announcementId}": {
       "schema": "Announcement",
       "description": "College announcements"
+    },
+    "/profile_picture_requests/{requestId}": {
+      "schema": "ProfilePictureRequest",
+      "description": "Profile picture requests for students"
     }
   }
 }

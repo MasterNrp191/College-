@@ -10,6 +10,7 @@ const navLinks = [
   { name: 'About', path: '/about' },
   { name: 'Programs', path: '/programs' },
   { name: 'Admissions', path: '/admissions' },
+  { name: 'Message Us', path: '/message-us' },
 ];
 
 export default function Navbar() {

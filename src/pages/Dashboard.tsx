@@ -20,14 +20,68 @@ import {
   Edit,
   Download,
   ExternalLink,
-  MessageSquare
+  MessageSquare,
+  Moon,
+  Sun
 } from 'lucide-react';
+import DarkModeToggle from '@/components/DarkModeToggle';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/components/AuthContext';
 import { collection, query, where, onSnapshot, orderBy, limit, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/firebase';
+import { db, auth } from '@/firebase';
 import { Result, Announcement, Message } from '@/types';
 import { MEDICAL_QUOTES } from '@/constants/quotes';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -59,7 +113,7 @@ export default function Dashboard() {
       resultsData.sort((a, b) => b.createdAt - a.createdAt);
       setResults(resultsData);
     }, (error) => {
-      console.error("Error fetching results:", error);
+      handleFirestoreError(error, OperationType.LIST, 'results');
     });
 
     const fq = query(
@@ -198,6 +252,15 @@ export default function Dashboard() {
             <span>My Files</span>
           </button>
           <button
+            onClick={() => setActiveTab('messages')}
+            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+              activeTab === 'messages' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'text-slate-600 hover:bg-slate-50 hover:text-blue-600'
+            }`}
+          >
+            <MessageSquare className="h-5 w-5" />
+            <span>Messages</span>
+          </button>
+          <button
             onClick={() => setActiveTab('announcements')}
             className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
               activeTab === 'announcements' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'text-slate-600 hover:bg-slate-50 hover:text-blue-600'
@@ -253,6 +316,7 @@ export default function Dashboard() {
             <p className="text-slate-500 font-medium mt-1">Here's what's happening with your academic progress.</p>
           </div>
           <div className="flex items-center space-x-4">
+            <DarkModeToggle />
             <button className="p-3 bg-white border border-slate-200 rounded-xl text-slate-600 hover:text-blue-600 hover:border-blue-200 transition-all relative">
               <Bell className="h-5 w-5" />
               <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
@@ -662,119 +726,74 @@ export default function Dashboard() {
             </div>
           )}
           {activeTab === 'messages' && (
-            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col h-[800px]">
-              <div className="p-6 border-b border-slate-100 bg-white flex items-center space-x-4 z-10 shadow-sm">
-                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">
-                  A
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900">Administration</h3>
-                  <p className="text-slate-500 text-sm">Usually replies within 24 hours</p>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50 flex flex-col-reverse">
-                <div className="space-y-6">
-                  {messages.length === 0 && (
-                    <div className="text-center text-slate-500 py-8">No messages sent yet. Start a conversation below.</div>
-                  )}
-                  {messages.slice().reverse().map(msg => (
-                    <div key={msg.id} className="space-y-4">
-                      {/* Student Message */}
-                      <div className="flex items-start space-x-3 justify-end">
-                        <div className="bg-blue-600 text-white p-4 rounded-2xl rounded-tr-none shadow-sm max-w-[80%]">
-                          <h5 className="font-bold text-blue-100 text-xs mb-1">{msg.subject}</h5>
-                          <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                          <div className="text-[10px] text-blue-200 mt-2 text-right">
-                            {new Date(msg.createdAt).toLocaleString()}
-                          </div>
-                        </div>
-                        <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-white font-bold text-xs flex-shrink-0 mt-1">
-                          {user.name.charAt(0).toUpperCase()}
-                        </div>
-                      </div>
-
-                      {/* Admin Reply */}
-                      {msg.reply && (
-                        <div className="flex items-start space-x-3">
-                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs flex-shrink-0 mt-1">
-                            A
-                          </div>
-                          <div className="bg-white border border-slate-100 p-4 rounded-2xl rounded-tl-none shadow-sm max-w-[80%]">
-                            <p className="text-slate-700 text-sm whitespace-pre-wrap">{msg.reply}</p>
-                            {msg.repliedAt && (
-                              <div className="text-[10px] text-slate-400 mt-2 text-left">
-                                {new Date(msg.repliedAt).toLocaleString()}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="p-6 border-t border-slate-100 bg-white">
-                {formStatus.text && (
-                  <div className={`mb-4 p-3 rounded-xl text-sm font-bold flex items-center space-x-2 ${
-                    formStatus.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
-                  }`}>
-                    {formStatus.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-                    <span>{formStatus.text}</span>
-                  </div>
+            <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+              <h3 className="text-2xl font-bold text-slate-900">Messages from Administration</h3>
+              <div className="space-y-4">
+                {messages.length === 0 && (
+                  <div className="text-center text-slate-500 py-8">No messages from administration yet.</div>
                 )}
-                <form 
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    if (!messageForm.subject || !messageForm.content) return;
-                    
-                    setFormStatus({ type: '', text: '' });
-                    try {
-                      await addDoc(collection(db, 'messages'), {
-                        senderId: user.uid || user.id,
-                        senderName: user.name,
-                        subject: messageForm.subject,
-                        content: messageForm.content,
-                        createdAt: Date.now(),
-                        isRead: false
-                      });
-                      setMessageForm({ subject: '', content: '' });
-                      setFormStatus({ type: 'success', text: 'Message sent successfully!' });
-                      setTimeout(() => setFormStatus({ type: '', text: '' }), 3000);
-                    } catch (err) {
-                      console.error('Error sending message:', err);
-                      setFormStatus({ type: 'error', text: 'Failed to send message.' });
-                    }
-                  }}
-                  className="space-y-4"
-                >
-                  <input
-                    type="text"
-                    required
-                    value={messageForm.subject}
-                    onChange={e => setMessageForm({...messageForm, subject: e.target.value})}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
-                    placeholder="Subject (e.g., Question about fees)"
-                  />
-                  <div className="flex space-x-4">
-                    <textarea
-                      required
-                      value={messageForm.content}
-                      onChange={e => setMessageForm({...messageForm, content: e.target.value})}
-                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all resize-none"
-                      rows={2}
-                      placeholder="Write your message here..."
-                    />
-                    <button 
-                      type="submit"
-                      className="bg-blue-600 text-white hover:bg-blue-700 px-6 rounded-xl text-sm font-bold transition-all shadow-sm flex-shrink-0"
-                    >
-                      Send
-                    </button>
+                {messages.slice().reverse().map(msg => (
+                  <div key={msg.id} className="p-6 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <h4 className="font-bold text-slate-900">{msg.subject}</h4>
+                      <span className="text-xs text-slate-400">{new Date(msg.createdAt).toLocaleString()}</span>
+                    </div>
+                    <p className="text-sm text-slate-700">{msg.content}</p>
+                    {msg.reply && (
+                      <div className="mt-4 pt-4 border-t border-slate-200">
+                        <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-1">Admin Reply</p>
+                        <p className="text-sm text-slate-700">{msg.reply}</p>
+                        <span className="text-[10px] text-slate-400 mt-1 block">{new Date(msg.repliedAt!).toLocaleString()}</span>
+                      </div>
+                    )}
                   </div>
-                </form>
+                ))}
               </div>
+              
+              <form 
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!messageForm.subject || !messageForm.content) return;
+                  
+                  setFormStatus({ type: '', text: '' });
+                  try {
+                    await addDoc(collection(db, 'messages'), {
+                      senderId: user.uid || user.id,
+                      senderName: user.name,
+                      subject: messageForm.subject,
+                      content: messageForm.content,
+                      createdAt: Date.now(),
+                      isRead: false
+                    });
+                    setMessageForm({ subject: '', content: '' });
+                    setFormStatus({ type: 'success', text: 'Message sent successfully!' });
+                    setTimeout(() => setFormStatus({ type: '', text: '' }), 3000);
+                  } catch (err) {
+                    console.error('Error sending message:', err);
+                    setFormStatus({ type: 'error', text: 'Failed to send message.' });
+                  }
+                }}
+                className="space-y-4 pt-6 border-t border-slate-100"
+              >
+                <input
+                  type="text"
+                  required
+                  value={messageForm.subject}
+                  onChange={e => setMessageForm({...messageForm, subject: e.target.value})}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                  placeholder="Subject"
+                />
+                <textarea
+                  required
+                  value={messageForm.content}
+                  onChange={e => setMessageForm({...messageForm, content: e.target.value})}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all h-24"
+                  placeholder="Write your message here..."
+                />
+                <button type="submit" className="bg-blue-600 text-white hover:bg-blue-700 px-6 py-3 rounded-xl text-sm font-bold transition-all shadow-lg shadow-blue-200">
+                  Send Message
+                </button>
+              </form>
             </div>
           )}
         </div>

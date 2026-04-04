@@ -32,14 +32,68 @@ import {
   Settings,
   ChevronUp,
   ChevronDown,
-  Award
+  Award,
+  Moon,
+  Sun
 } from 'lucide-react';
+import DarkModeToggle from '@/components/DarkModeToggle';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, orderBy, serverTimestamp, where } from 'firebase/firestore';
-import { db } from '@/firebase';
+import { db, auth } from '@/firebase';
 import { Student, Result, Announcement, UserRole, Message } from '@/types';
 import { useAuth } from '@/components/AuthContext';
 import { MEDICAL_QUOTES } from '@/constants/quotes';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 export default function Admin() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -117,11 +171,6 @@ export default function Admin() {
 
   // Form state for results
   const [resultForm, setResultForm] = useState({
-    courseName: '',
-    courseCode: '',
-    grade: '',
-    semester: 'Semester 1',
-    year: '2024/2025',
     fileUrl: ''
   });
 
@@ -342,14 +391,14 @@ export default function Admin() {
 
       if (editingResultId) {
         await updateDoc(doc(db, 'results', editingResultId), {
-          ...resultForm,
+          fileUrl: resultForm.fileUrl,
           studentUid: student.uid || student.id,
         });
         setMessage({ type: 'success', text: 'Result updated successfully!' });
         setEditingResultId(null);
       } else {
         await addDoc(collection(db, 'results'), {
-          ...resultForm,
+          fileUrl: resultForm.fileUrl,
           studentUid: student.uid || student.id,
           createdAt: Date.now()
         });
@@ -357,17 +406,18 @@ export default function Admin() {
       }
 
       setResultForm({
-        courseName: '',
-        courseCode: '',
-        grade: '',
-        semester: 'Semester 1',
-        year: '2024/2025',
         fileUrl: ''
       });
       setSelectedStudentId('');
     } catch (error: any) {
       console.error("Error uploading result:", error);
-      setMessage({ type: 'error', text: error.message || 'Failed to upload result.' });
+      const errInfo = {
+        error: error.message,
+        operationType: editingResultId ? 'update' : 'create',
+        path: 'results',
+        user: auth.currentUser?.uid
+      };
+      setMessage({ type: 'error', text: 'Failed to upload result: ' + JSON.stringify(errInfo) });
     } finally {
       setUploading(false);
     }
@@ -694,6 +744,7 @@ export default function Admin() {
             </p>
           </div>
           <div className="flex items-center space-x-4">
+            <DarkModeToggle />
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
               <input
@@ -1114,68 +1165,19 @@ export default function Admin() {
                   </select>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Course Name</label>
-                    <input 
-                      required
-                      type="text" 
-                      value={resultForm.courseName}
-                      onChange={(e) => setResultForm({...resultForm, courseName: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all" 
-                      placeholder="e.g. Anatomy I" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Course Code</label>
-                    <input 
-                      required
-                      type="text" 
-                      value={resultForm.courseCode}
-                      onChange={(e) => setResultForm({...resultForm, courseCode: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all" 
-                      placeholder="e.g. CM 101" 
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Semester</label>
+                  <select 
+                    required
+                    value={resultForm.semester}
+                    onChange={(e) => setResultForm({...resultForm, semester: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all appearance-none"
+                  >
+                    <option value="Semester 1">Semester 1</option>
+                    <option value="Semester 2">Semester 2</option>
+                  </select>
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Grade</label>
-                    <input 
-                      required
-                      type="text" 
-                      value={resultForm.grade}
-                      onChange={(e) => setResultForm({...resultForm, grade: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all" 
-                      placeholder="e.g. A" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Semester</label>
-                    <select 
-                      required
-                      value={resultForm.semester}
-                      onChange={(e) => setResultForm({...resultForm, semester: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all appearance-none"
-                    >
-                      <option value="Semester 1">Semester 1</option>
-                      <option value="Semester 2">Semester 2</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Academic Year</label>
-                    <input 
-                      required
-                      type="text" 
-                      value={resultForm.year}
-                      onChange={(e) => setResultForm({...resultForm, year: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all" 
-                      placeholder="e.g. 2024/2025" 
-                    />
-                  </div>
-                </div>
-
+                
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-widest ml-1">Result File (Optional)</label>
                   <input 
@@ -1540,7 +1542,7 @@ export default function Admin() {
                             </span>
                           </div>
                           <p className="text-sm text-slate-500 truncate">
-                            {conv.messages[conv.messages.length - 1].subject}
+                            {conv.messages[conv.messages.length - 1].content}
                           </p>
                         </div>
                         {conv.unreadCount > 0 && (

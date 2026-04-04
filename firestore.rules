@@ -131,13 +131,14 @@ service cloud.firestore {
     }
 
     function isValidResult(data) {
-      return data.keys().hasOnly(['studentUid', 'courseName', 'courseCode', 'grade', 'semester', 'year', 'createdAt']) &&
+      return data.keys().hasOnly(['studentUid', 'courseName', 'courseCode', 'grade', 'semester', 'year', 'fileUrl', 'createdAt']) &&
              data.studentUid is string &&
              data.courseName is string && data.courseName.size() <= 100 &&
              data.courseCode is string && data.courseCode.size() <= 20 &&
              data.grade is string && data.grade.size() <= 5 &&
              data.semester is string &&
              data.year is string &&
+             (!('fileUrl' in data) || data.fileUrl is string) &&
              data.createdAt is number;
     }
 
@@ -199,23 +200,23 @@ service cloud.firestore {
 
     match /results/{resultId} {
       allow read: if isAuthenticated() && (request.auth.uid == resource.data.studentUid || isStaff());
-      allow create: if isStaff() && !isBursar() && isValidResult(request.resource.data);
-      allow update: if isStaff() && !isBursar() && isValidResult(request.resource.data);
-      allow delete: if isStaff() && !isBursar();
+      allow create: if isStaff() && isValidResult(request.resource.data);
+      allow update: if isStaff() && isValidResult(request.resource.data);
+      allow delete: if isStaff();
     }
 
     match /timetables/{timetableId} {
       allow read: if true;
-      allow create: if isStaff() && !isBursar() && isValidTimetable(request.resource.data);
-      allow update: if isStaff() && !isBursar() && isValidTimetable(request.resource.data);
-      allow delete: if isStaff() && !isBursar();
+      allow create: if isStaff() && isValidTimetable(request.resource.data);
+      allow update: if isStaff() && isValidTimetable(request.resource.data);
+      allow delete: if isStaff();
     }
 
     match /announcements/{announcementId} {
       allow read: if true;
-      allow create: if isStaff() && !isBursar() && isValidAnnouncement(request.resource.data);
-      allow update: if isStaff() && !isBursar() && isValidAnnouncement(request.resource.data);
-      allow delete: if isStaff() && !isBursar();
+      allow create: if isStaff() && isValidAnnouncement(request.resource.data);
+      allow update: if isStaff() && isValidAnnouncement(request.resource.data);
+      allow delete: if isStaff();
     }
 
     match /student_files/{fileId} {
